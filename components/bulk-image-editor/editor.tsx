@@ -50,6 +50,8 @@ import type {
   ExportFormat,
 } from "@/components/bulk-image-editor/types";
 
+const MIN_CROP_SIZE = 0.05;
+
 const INITIAL_ACTION_SETTINGS: EditorActionSettings = {
   crop: {
     x: 0.1,
@@ -72,6 +74,29 @@ function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeCrop(crop: EditorActionSettings["crop"]) {
+  const width = clamp(crop.width, MIN_CROP_SIZE, 1);
+  const height = clamp(crop.height, MIN_CROP_SIZE, 1);
+  const x = clamp(crop.x, 0, 1 - width);
+  const y = clamp(crop.y, 0, 1 - height);
+
+  return { x, y, width, height };
+}
+
+type CropHandle = "move" | "nw" | "ne" | "se" | "sw";
+
+type CropInteraction = {
+  handle: CropHandle;
+  pointerId: number;
+  originX: number;
+  originY: number;
+  startCrop: EditorActionSettings["crop"];
+};
+
 export function BulkImageEditor() {
   const [images, setImages] = useState<EditorImage[]>([]);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
@@ -83,6 +108,8 @@ export function BulkImageEditor() {
   const [isApplying, startApplyingTransition] = useTransition();
   const [isDownloading, startDownloadTransition] = useTransition();
   const objectUrlsRef = useRef<string[]>([]);
+  const previewFrameRef = useRef<HTMLDivElement | null>(null);
+  const cropInteractionRef = useRef<CropInteraction | null>(null);
 
   const selectedImage = useMemo(() => {
     if (!selectedImageId) {
@@ -145,26 +172,112 @@ export function BulkImageEditor() {
 
   function updateCropSetting(key: "x" | "y" | "width" | "height", value: number) {
     setActionSettings((current) => {
-      const draft = {
+      const nextCrop = normalizeCrop({
         ...current.crop,
         [key]: value,
-      };
-
-      draft.x = Math.min(draft.x, 1 - draft.width);
-      draft.y = Math.min(draft.y, 1 - draft.height);
-      draft.width = Math.min(draft.width, 1 - draft.x);
-      draft.height = Math.min(draft.height, 1 - draft.y);
+      });
 
       return {
         ...current,
-        crop: {
-          x: Math.max(0, draft.x),
-          y: Math.max(0, draft.y),
-          width: Math.max(0.05, draft.width),
-          height: Math.max(0.05, draft.height),
-        },
+        crop: nextCrop,
       };
     });
+  }
+
+  function updateCrop(nextCrop: EditorActionSettings["crop"]) {
+    setActionSettings((current) => ({
+      ...current,
+      crop: normalizeCrop(nextCrop),
+    }));
+  }
+
+  function beginCropInteraction(
+    event: React.PointerEvent<HTMLElement>,
+    handle: CropHandle,
+  ) {
+    if (!previewFrameRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    cropInteractionRef.current = {
+      handle,
+      pointerId: event.pointerId,
+      originX: event.clientX,
+      originY: event.clientY,
+      startCrop: actionSettings.crop,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleCropPointerMove(event: React.PointerEvent<HTMLElement>) {
+    const interaction = cropInteractionRef.current;
+    const frame = previewFrameRef.current;
+
+    if (!interaction || interaction.pointerId !== event.pointerId || !frame) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const rect = frame.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      return;
+    }
+
+    const dx = (event.clientX - interaction.originX) / rect.width;
+    const dy = (event.clientY - interaction.originY) / rect.height;
+    const startCrop = interaction.startCrop;
+
+    if (interaction.handle === "move") {
+      updateCrop({
+        ...startCrop,
+        x: startCrop.x + dx,
+        y: startCrop.y + dy,
+      });
+      return;
+    }
+
+    const nextCrop = { ...startCrop };
+
+    if (interaction.handle.includes("w")) {
+      const nextX = clamp(startCrop.x + dx, 0, startCrop.x + startCrop.width - MIN_CROP_SIZE);
+      nextCrop.x = nextX;
+      nextCrop.width = startCrop.width + (startCrop.x - nextX);
+    }
+
+    if (interaction.handle.includes("e")) {
+      nextCrop.width = clamp(startCrop.width + dx, MIN_CROP_SIZE, 1 - startCrop.x);
+    }
+
+    if (interaction.handle.includes("n")) {
+      const nextY = clamp(startCrop.y + dy, 0, startCrop.y + startCrop.height - MIN_CROP_SIZE);
+      nextCrop.y = nextY;
+      nextCrop.height = startCrop.height + (startCrop.y - nextY);
+    }
+
+    if (interaction.handle.includes("s")) {
+      nextCrop.height = clamp(startCrop.height + dy, MIN_CROP_SIZE, 1 - startCrop.y);
+    }
+
+    updateCrop(nextCrop);
+  }
+
+  function endCropInteraction(event: React.PointerEvent<HTMLElement>) {
+    const interaction = cropInteractionRef.current;
+
+    if (!interaction || interaction.pointerId !== event.pointerId) {
+      return;
+    }
+
+    cropInteractionRef.current = null;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   function applyAction(scope: "selected" | "all") {
@@ -467,16 +580,49 @@ export function BulkImageEditor() {
                           />
 
                           {selectedActionId === "crop" ? (
-                            <div
-                              className="pointer-events-none absolute rounded-[1.4rem] border-2 border-white shadow-[0_0_0_9999px_rgba(32,24,15,0.42)]"
-                              style={{
-                                left: `${actionSettings.crop.x * 100}%`,
-                                top: `${actionSettings.crop.y * 100}%`,
-                                width: `${actionSettings.crop.width * 100}%`,
-                                height: `${actionSettings.crop.height * 100}%`,
-                              }}
-                            >
-                              <div className="absolute inset-0 rounded-[1.3rem] border border-dashed border-white/80" />
+                            <div ref={previewFrameRef} className="absolute inset-0">
+                              <div
+                                role="presentation"
+                                className="absolute rounded-[1.4rem] border-2 border-white shadow-[0_0_0_9999px_rgba(32,24,15,0.42)] touch-none cursor-move"
+                                style={{
+                                  left: `${actionSettings.crop.x * 100}%`,
+                                  top: `${actionSettings.crop.y * 100}%`,
+                                  width: `${actionSettings.crop.width * 100}%`,
+                                  height: `${actionSettings.crop.height * 100}%`,
+                                }}
+                                onPointerDown={(event) => beginCropInteraction(event, "move")}
+                                onPointerMove={handleCropPointerMove}
+                                onPointerUp={endCropInteraction}
+                                onPointerCancel={endCropInteraction}
+                              >
+                                <div className="absolute inset-0 rounded-[1.3rem] border border-dashed border-white/80" />
+                              </div>
+                              {(
+                                [
+                                  ["nw", "top-0 left-0 cursor-nwse-resize"],
+                                  ["ne", "top-0 right-0 cursor-nesw-resize"],
+                                  ["se", "right-0 bottom-0 cursor-nwse-resize"],
+                                  ["sw", "bottom-0 left-0 cursor-nesw-resize"],
+                                ] as const
+                              ).map(([handle, className]) => (
+                                <button
+                                  key={handle}
+                                  type="button"
+                                  aria-label={`Resize crop ${handle}`}
+                                  className={cn(
+                                    "absolute z-10 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-stone-950 bg-white shadow-sm touch-none",
+                                    className,
+                                  )}
+                                  style={{
+                                    left: `${(actionSettings.crop.x + (handle.includes("e") ? actionSettings.crop.width : 0)) * 100}%`,
+                                    top: `${(actionSettings.crop.y + (handle.includes("s") ? actionSettings.crop.height : 0)) * 100}%`,
+                                  }}
+                                  onPointerDown={(event) => beginCropInteraction(event, handle)}
+                                  onPointerMove={handleCropPointerMove}
+                                  onPointerUp={endCropInteraction}
+                                  onPointerCancel={endCropInteraction}
+                                />
+                              ))}
                             </div>
                           ) : null}
                         </div>
