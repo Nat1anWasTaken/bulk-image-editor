@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -255,8 +254,8 @@ export function BulkImageEditor() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(248,244,236,0.98)_40%,_#e9dfcc_100%)] text-zinc-950">
-      <div className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col px-4 py-4 sm:px-6 lg:px-8">
+    <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(248,244,236,0.98)_40%,_#e9dfcc_100%)] text-zinc-950">
+      <div className="mx-auto flex h-screen w-full max-w-[1600px] flex-col px-4 py-4 sm:px-6 lg:px-8">
         {!images.length ? (
           <section className="flex min-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-[2rem] border border-black/10 bg-stone-950 text-stone-50 shadow-[0_40px_120px_rgba(32,24,15,0.22)]">
             <div className="flex flex-1 flex-col justify-between gap-12 p-8 sm:p-12 lg:flex-row lg:items-end lg:p-16">
@@ -307,7 +306,7 @@ export function BulkImageEditor() {
             </div>
           </section>
         ) : (
-          <section className="flex min-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-[2rem] border border-black/10 bg-[#f6f0e6] shadow-[0_28px_90px_rgba(83,64,39,0.18)]">
+          <section className="flex h-[calc(100vh-2rem)] min-h-0 flex-col overflow-hidden rounded-[2rem] border border-black/10 bg-[#f6f0e6] shadow-[0_28px_90px_rgba(83,64,39,0.18)]">
             <header className="flex flex-col gap-4 border-b border-black/10 bg-[#f2e8d8]/90 px-5 py-4 backdrop-blur sm:px-6 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.22em] text-amber-900/70">
@@ -345,7 +344,7 @@ export function BulkImageEditor() {
               </div>
             </header>
 
-            <div className="grid flex-1 gap-px bg-black/8 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)_360px]">
+            <div className="grid min-h-0 flex-1 gap-px overflow-hidden bg-black/8 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)_360px]">
               <aside className="flex min-h-0 flex-col bg-[#fbf8f2]">
                 <div className="border-b border-black/8 px-5 py-4">
                   <p className="text-sm font-medium text-stone-900">Images and versions</p>
@@ -354,90 +353,92 @@ export function BulkImageEditor() {
                   </p>
                 </div>
 
-                <ScrollArea className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
-                  {images.map((image) => {
-                    const active = getActiveVersion(image);
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                  <div className="grid gap-3">
+                    {images.map((image) => {
+                      const active = getActiveVersion(image);
 
-                    return (
-                      <Card
-                        key={image.id}
-                        onClick={() => setSelectedImageId(image.id)}
-                        className={cn(
-                          "rounded-[1.5rem] p-3 text-left transition-colors shadow-none",
-                          selectedImageId === image.id
-                            ? "border-stone-950 bg-white shadow-sm"
-                            : "border-black/8 bg-[#f3ece0] hover:bg-white",
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-[1.1rem] bg-stone-200">
-                            <Image
-                              src={active.objectUrl}
-                              alt={image.name}
-                              fill
-                              unoptimized
-                              sizes="80px"
-                              className="object-cover"
-                            />
+                      return (
+                        <Card
+                          key={image.id}
+                          onClick={() => setSelectedImageId(image.id)}
+                          className={cn(
+                            "rounded-[1.5rem] p-3 text-left transition-colors shadow-none",
+                            selectedImageId === image.id
+                              ? "border-stone-950 bg-white shadow-sm"
+                              : "border-black/8 bg-[#f3ece0] hover:bg-white",
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-[1.1rem] bg-stone-200">
+                              <Image
+                                src={active.objectUrl}
+                                alt={image.name}
+                                fill
+                                unoptimized
+                                sizes="80px"
+                                className="object-cover"
+                              />
+                            </div>
+
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-stone-950">
+                                {image.name}
+                              </p>
+                              <p className="mt-1 text-xs text-stone-600">
+                                Active: {active.label} • {formatDimensions(active.width, active.height)}
+                              </p>
+                              <p className="mt-1 text-xs text-stone-500">
+                                {image.versions.length} versions
+                              </p>
+                            </div>
                           </div>
 
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-stone-950">
-                              {image.name}
-                            </p>
-                            <p className="mt-1 text-xs text-stone-600">
-                              Active: {active.label} • {formatDimensions(active.width, active.height)}
-                            </p>
-                            <p className="mt-1 text-xs text-stone-500">
-                              {image.versions.length} versions
-                            </p>
-                          </div>
-                        </div>
+                          <div className="mt-3 overflow-x-auto pb-1">
+                            <div className="flex min-w-max gap-2">
+                              {image.versions.map((version, index) => {
+                                const isActive = image.activeVersionId === version.id;
 
-                        <div className="mt-3 overflow-x-auto pb-1">
-                          <div className="flex min-w-max gap-2">
-                            {image.versions.map((version, index) => {
-                              const isActive = image.activeVersionId === version.id;
-
-                              return (
-                                <div
-                                  key={version.id}
-                                  className={cn(
-                                    "flex items-center gap-2 rounded-full border px-2 py-1.5 text-xs whitespace-nowrap transition-colors",
-                                    isActive
-                                      ? "border-stone-950 bg-stone-950 text-stone-50"
-                                      : "border-black/8 bg-white text-stone-700 hover:bg-stone-100",
-                                  )}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setActiveVersion(image.id, version.id);
-                                  }}
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter" || event.key === " ") {
-                                      event.preventDefault();
+                                return (
+                                  <div
+                                    key={version.id}
+                                    className={cn(
+                                      "flex items-center gap-2 rounded-full border px-2 py-1.5 text-xs whitespace-nowrap transition-colors",
+                                      isActive
+                                        ? "border-stone-950 bg-stone-950 text-stone-50"
+                                        : "border-black/8 bg-white text-stone-700 hover:bg-stone-100",
+                                    )}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
                                       setActiveVersion(image.id, version.id);
-                                    }
-                                  }}
-                                >
-                                  <span className="inline-flex size-6 items-center justify-center rounded-full bg-black/6 text-[11px] font-semibold text-current">
-                                    {index + 1}
-                                  </span>
-                                  <span>{version.label}</span>
-                                  {isActive ? <Check className="size-3.5" /> : null}
-                                </div>
-                              );
-                            })}
+                                    }}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        setActiveVersion(image.id, version.id);
+                                      }
+                                    }}
+                                  >
+                                    <span className="inline-flex size-6 items-center justify-center rounded-full bg-black/6 text-[11px] font-semibold text-current">
+                                      {index + 1}
+                                    </span>
+                                    <span>{version.label}</span>
+                                    {isActive ? <Check className="size-3.5" /> : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </ScrollArea>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
               </aside>
 
-              <section className="flex min-h-[420px] flex-col bg-[#efe5d4]">
+              <section className="flex min-h-0 flex-col overflow-hidden bg-[#efe5d4]">
                 <div className="flex items-center justify-between border-b border-black/8 px-5 py-4">
                   <div>
                     <p className="text-sm font-medium text-stone-900">
@@ -451,18 +452,18 @@ export function BulkImageEditor() {
                   </div>
                 </div>
 
-                <div className="flex flex-1 items-center justify-center p-5 lg:p-8">
+                <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-5 lg:p-8">
                   {activeVersion ? (
-                    <div className="flex h-full w-full items-center justify-center rounded-[2rem] border border-black/8 bg-[linear-gradient(135deg,_rgba(255,255,255,0.82),_rgba(249,242,230,0.96))] p-4 sm:p-6">
-                      <div className="flex max-h-full w-full max-w-4xl items-center justify-center overflow-hidden rounded-[1.75rem] bg-[linear-gradient(45deg,#e7decf_25%,transparent_25%,transparent_75%,#e7decf_75%,#e7decf),linear-gradient(45deg,#e7decf_25%,transparent_25%,transparent_75%,#e7decf_75%,#e7decf)] bg-[length:28px_28px] bg-[position:0_0,14px_14px] p-4">
-                        <div className="relative inline-block">
+                    <div className="flex h-full w-full min-h-0 items-center justify-center overflow-hidden rounded-[2rem] border border-black/8 bg-[linear-gradient(135deg,_rgba(255,255,255,0.82),_rgba(249,242,230,0.96))] p-4 sm:p-6">
+                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[1.75rem] bg-[linear-gradient(45deg,#e7decf_25%,transparent_25%,transparent_75%,#e7decf_75%,#e7decf),linear-gradient(45deg,#e7decf_25%,transparent_25%,transparent_75%,#e7decf_75%,#e7decf)] bg-[length:28px_28px] bg-[position:0_0,14px_14px] p-4">
+                        <div className="relative flex max-h-full max-w-full items-center justify-center">
                           <Image
                             src={activeVersion.objectUrl}
                             alt={selectedImage?.name ?? "Selected image"}
                             width={activeVersion.width}
                             height={activeVersion.height}
                             unoptimized
-                            className="max-h-[65vh] h-auto w-auto max-w-full rounded-[1.35rem] object-contain shadow-[0_22px_70px_rgba(70,50,23,0.28)]"
+                            className="h-auto max-h-full w-auto max-w-full rounded-[1.35rem] object-contain shadow-[0_22px_70px_rgba(70,50,23,0.28)]"
                           />
 
                           {selectedActionId === "crop" ? (
@@ -495,8 +496,9 @@ export function BulkImageEditor() {
                   </p>
                 </div>
 
-                <ScrollArea className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-5">
-                  <div className="grid gap-3">
+                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                  <div className="grid gap-5">
+                    <div className="grid gap-3">
                     {(Object.values(ACTIONS) as Array<(typeof ACTIONS)[EditorActionId]>).map(
                       (action) => (
                         <button
@@ -542,7 +544,7 @@ export function BulkImageEditor() {
                         </button>
                       ),
                     )}
-                  </div>
+                    </div>
 
                   {selectedActionId === "crop" ? (
                     <Card className="rounded-[1.5rem] border-black/8 bg-[#faf6ef] shadow-none">
@@ -745,7 +747,8 @@ export function BulkImageEditor() {
                       <AlertDescription>{errorMessage}</AlertDescription>
                     </Alert>
                   ) : null}
-                </ScrollArea>
+                  </div>
+                </div>
               </aside>
             </div>
           </section>
