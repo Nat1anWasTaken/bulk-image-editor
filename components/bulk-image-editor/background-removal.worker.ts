@@ -143,7 +143,10 @@ async function getRembgSession(model: RemoveBackgroundSettings["model"]) {
     rembgConfig.setCustomModelPath(rembgModel, modelPath);
 
     try {
-      return await createRembgSession(rembgModel);
+      return await createRembgSession(rembgModel, undefined, {
+        preferWebGPU: true,
+        webgpuPowerPreference: "high-performance",
+      });
     } catch (error) {
       throw new Error(
         `Failed to load rembg-web model "${rembgModel}" from ${modelPath}. Verify that public/models/${rembgModel}.onnx exists and is readable.`,
@@ -307,7 +310,7 @@ async function removeBackgroundWithEdgeFlood(
 
 async function removeBackgroundWithImgly(blob: Blob, settings: RemoveBackgroundSettings) {
   const nextBlob = await removeBackground(blob, {
-    device: "cpu",
+    device: "gpu",
     model: getImglyModel(settings.model),
     output: {
       format: "image/png",
