@@ -1,9 +1,16 @@
 /// <reference lib="webworker" />
 
+import {
+  newSession as createRembgSession,
+  rembgConfig,
+  remove as removeRembgBackground,
+  type BaseSession,
+} from "@bunnio/rembg-web";
 import { removeBackground } from "@imgly/background-removal";
 
 import {
   isImglyRemoveBackgroundModel,
+  isRembgRemoveBackgroundModel,
 } from "@/components/bulk-image-editor/remove-background-options";
 import type { RemoveBackgroundSettings } from "@/components/bulk-image-editor/types";
 
@@ -34,6 +41,9 @@ type BackgroundRemovalResponse =
   | BackgroundRemovalSuccess
   | BackgroundRemovalFailure;
 
+let rembgEnvironmentReady = false;
+const rembgSessionCache = new Map<string, Promise<BaseSession>>();
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -42,6 +52,114 @@ function getImglyModel(
   model: RemoveBackgroundSettings["model"],
 ) {
   return isImglyRemoveBackgroundModel(model) ? model : "isnet_quint8";
+}
+
+function getRembgModel(
+  model: RemoveBackgroundSettings["model"],
+) {
+  return isRembgRemoveBackgroundModel(model) ? model : "u2netp";
+}
+
+function ensureRembgEnvironment() {
+  if (rembgEnvironmentReady) {
+    return;
+  }
+
+  rembgConfig.setBaseUrl("/models");
+
+  const globalScope = globalThis as unknown as {
+    HTMLCanvasElement?: typeof OffscreenCanvas;
+    document?: {
+      createElement: (tagName: string) => OffscreenCanvas;
+    };
+  };
+
+  if (!globalScope.HTMLCanvasElement) {
+    globalScope.HTMLCanvasElement = OffscreenCanvas;
+  }
+
+  if (!globalScope.document) {
+    globalScope.document = {
+      createElement(tagName: string) {
+        if (tagName !== "canvas") {
+          throw new Error(`Unsupported element requested in worker: ${tagName}`);
+        }
+
+        return new OffscreenCanvas(1, 1);
+      },
+    };
+  }
+
+  const offscreenCanvasPrototype = OffscreenCanvas.prototype as OffscreenCanvas & {
+    toBlob?: (
+      callback: BlobCallback,
+      type?: string,
+      quality?: number,
+    ) => void;
+  };
+
+  if (!("toBlob" in offscreenCanvasPrototype)) {
+    Object.defineProperty(offscreenCanvasPrototype, "toBlob", {
+      configurable: true,
+      value(
+        this: OffscreenCanvas,
+        callback: BlobCallback,
+        type?: string,
+        quality?: number,
+      ) {
+        void this.convertToBlob({ type, quality }).then(callback).catch(() => {
+          callback(null);
+        });
+      },
+    });
+  }
+
+  rembgEnvironmentReady = true;
+}
+
+async function getRembgSession(model: RemoveBackgroundSettings["model"]) {
+  ensureRembgEnvironment();
+
+  const rembgModel = getRembgModel(model);
+  const cachedSession = rembgSessionCache.get(rembgModel);
+
+  if (cachedSession) {
+    return cachedSession;
+  }
+
+  const sessionPromise = (async () => {
+    const modelPath = `/models/${rembgModel}.onnx`;
+    const response = await fetch(modelPath, {
+      method: "HEAD",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `rembg-web model "${rembgModel}" was not found at ${modelPath}. Download the ONNX file into public/models/${rembgModel}.onnx.`,
+      );
+    }
+
+    rembgConfig.setCustomModelPath(rembgModel, modelPath);
+
+    try {
+      return await createRembgSession(rembgModel);
+    } catch (error) {
+      throw new Error(
+        `Failed to load rembg-web model "${rembgModel}" from ${modelPath}. Verify that public/models/${rembgModel}.onnx exists and is readable.`,
+        { cause: error },
+      );
+    }
+  })();
+
+  rembgSessionCache.set(rembgModel, sessionPromise);
+
+  try {
+    return await sessionPromise;
+  } catch (error) {
+    rembgSessionCache.delete(rembgModel);
+    throw error;
+  }
 }
 
 async function bitmapFromBlob(blob: Blob) {
@@ -210,6 +328,44 @@ async function removeBackgroundWithImgly(blob: Blob, settings: RemoveBackgroundS
   }
 }
 
+async function removeBackgroundWithRembg(
+  blob: Blob,
+  settings: RemoveBackgroundSettings,
+) {
+  const session = await getRembgSession(settings.model);
+  const bitmap = await bitmapFromBlob(blob);
+
+  try {
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Canvas context is unavailable.");
+    }
+
+    context.drawImage(bitmap, 0, 0);
+
+    const nextBlob = await removeRembgBackground(
+      canvas as unknown as HTMLCanvasElement,
+      { session },
+    );
+    const resultBitmap = await bitmapFromBlob(nextBlob);
+
+    try {
+      return {
+        blob: nextBlob,
+        width: resultBitmap.width,
+        height: resultBitmap.height,
+        mimeType: "image/png",
+      };
+    } finally {
+      resultBitmap.close();
+    }
+  } finally {
+    bitmap.close();
+  }
+}
+
 self.onmessage = async (event: MessageEvent<BackgroundRemovalRequest>) => {
   const { id, blob, settings } = event.data;
 
@@ -217,6 +373,8 @@ self.onmessage = async (event: MessageEvent<BackgroundRemovalRequest>) => {
     const result =
       settings.provider === "imgly"
         ? await removeBackgroundWithImgly(blob, settings)
+        : settings.provider === "rembg"
+          ? await removeBackgroundWithRembg(blob, settings)
         : await removeBackgroundWithEdgeFlood(blob, settings);
 
     const response: BackgroundRemovalResponse = {

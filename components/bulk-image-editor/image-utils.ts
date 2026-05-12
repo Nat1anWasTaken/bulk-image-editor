@@ -1,15 +1,5 @@
 "use client";
 
-import {
-  newSession as createRembgSession,
-  remove as removeRembgBackground,
-  rembgConfig,
-  type BaseSession,
-} from "@bunnio/rembg-web";
-
-import {
-  isRembgRemoveBackgroundModel,
-} from "@/components/bulk-image-editor/remove-background-options";
 import type {
   CropSettings,
   EditorActionId,
@@ -17,7 +7,6 @@ import type {
   ExportFormat,
   ImageVersion,
   RemoveBackgroundSettings,
-  RembgRemoveBackgroundModel,
 } from "@/components/bulk-image-editor/types";
 
 type BackgroundRemovalWorkerRequest = {
@@ -39,7 +28,6 @@ type BackgroundRemovalWorkerResponse =
     };
 
 let backgroundRemovalWorker: Worker | null = null;
-const rembgSessionCache = new Map<RembgRemoveBackgroundModel, Promise<BaseSession>>();
 const backgroundRemovalResolvers = new Map<
   string,
   {
@@ -51,8 +39,6 @@ const backgroundRemovalResolvers = new Map<
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
-
-rembgConfig.setBaseUrl("/models");
 
 function getBackgroundRemovalWorker() {
   if (backgroundRemovalWorker) {
@@ -103,58 +89,6 @@ function clamp(value: number, min: number, max: number) {
 function sanitizeFileNameStem(fileName: string) {
   const stem = fileName.replace(/\.[^.]+$/, "").trim() || "image";
   return stem.replace(/[^a-z0-9-_]+/gi, "-").replace(/-+/g, "-");
-}
-
-function getRembgModel(
-  model: RemoveBackgroundSettings["model"],
-): RembgRemoveBackgroundModel {
-  return isRembgRemoveBackgroundModel(model) ? model : "u2netp";
-}
-
-async function resolveRembgModelPath(model: RembgRemoveBackgroundModel) {
-  const modelPath = `/models/${model}.onnx`;
-  const response = await fetch(modelPath, {
-    method: "HEAD",
-    cache: "no-store",
-  });
-
-  if (response.ok) {
-    return modelPath;
-  }
-
-  throw new Error(
-    `rembg-web model "${model}" was not found at ${modelPath}. Download the ONNX file into public/models/${model}.onnx.`,
-  );
-}
-
-async function getRembgSession(model: RembgRemoveBackgroundModel) {
-  const cachedSession = rembgSessionCache.get(model);
-
-  if (cachedSession) {
-    return cachedSession;
-  }
-
-  const sessionPromise = (async () => {
-    const modelPath = await resolveRembgModelPath(model);
-    rembgConfig.setCustomModelPath(model, modelPath);
-    try {
-      return await createRembgSession(model);
-    } catch (error) {
-      throw new Error(
-        `Failed to load rembg-web model "${model}" from ${modelPath}. Verify that public/models/${model}.onnx exists and is readable.`,
-        { cause: error },
-      );
-    }
-  })();
-
-  rembgSessionCache.set(model, sessionPromise);
-
-  try {
-    return await sessionPromise;
-  } catch (error) {
-    rembgSessionCache.delete(model);
-    throw error;
-  }
 }
 
 export async function loadImageFromBlob(blob: Blob) {
@@ -254,31 +188,6 @@ export async function removeBackgroundFromVersion(
   version: ImageVersion,
   settings: RemoveBackgroundSettings,
 ): Promise<Pick<ImageVersion, "blob" | "width" | "height" | "mimeType">> {
-  if (settings.provider === "rembg") {
-    const model = getRembgModel(settings.model);
-    const session = await getRembgSession(model);
-    const image = await loadImageFromBlob(version.blob);
-    const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
-    const context = canvas.getContext("2d");
-
-    if (!context) {
-      throw new Error("Canvas context is unavailable.");
-    }
-
-    context.drawImage(image, 0, 0);
-
-    const blob = await removeRembgBackground(canvas, { session });
-
-    return {
-      blob,
-      width: canvas.width,
-      height: canvas.height,
-      mimeType: "image/png",
-    };
-  }
-
   const worker = getBackgroundRemovalWorker();
   const id = createId("bg-remove");
 
