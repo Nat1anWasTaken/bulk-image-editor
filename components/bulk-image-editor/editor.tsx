@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import JSZip from "jszip";
 import { ACTIONS } from "@/components/bulk-image-editor/actions";
 import { BulkImageEditorActionSidebar } from "@/components/bulk-image-editor/action-sidebar";
@@ -20,6 +20,7 @@ import {
 } from "@/components/bulk-image-editor/image-utils";
 import { BulkImageEditorWorkspaceHeader } from "@/components/bulk-image-editor/workspace-header";
 import type {
+  ActionProgress,
   EditorActionId,
   EditorActionSettings,
   EditorImage,
@@ -59,8 +60,8 @@ export function BulkImageEditor() {
     useState<EditorActionSettings>(INITIAL_ACTION_SETTINGS);
   const [downloadFormat, setDownloadFormat] = useState<ExportFormat>("png");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isApplying, startApplyingTransition] = useTransition();
-  const [isDownloading, startDownloadTransition] = useTransition();
+  const [applyProgress, setApplyProgress] = useState<ActionProgress | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   const objectUrlsRef = useRef<string[]>([]);
   const previewFrameRef = useRef<HTMLDivElement | null>(null);
   const cropInteractionRef = useRef<CropInteraction | null>(null);
@@ -70,6 +71,7 @@ export function BulkImageEditor() {
     : null;
   const selectedImageIndex = images.findIndex((image) => image.id === selectedImageId);
   const activeVersion = selectedImage ? getActiveVersion(selectedImage) : null;
+  const isApplying = applyProgress !== null;
 
   useEffect(() => {
     objectUrlsRef.current = images.flatMap((image) =>
@@ -292,45 +294,81 @@ export function BulkImageEditor() {
     }
   }
 
-  function applyAction(scope: "selected" | "all") {
+  function yieldToBrowser() {
+    return new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 0);
+    });
+  }
+
+  async function applyAction(scope: "selected" | "all") {
     const definition = ACTIONS[selectedActionId];
 
-    if (!definition) {
+    if (!definition || isApplying) {
       return;
     }
 
     setErrorMessage(null);
+    const executionContext = actionSettings;
+    const targetEntries = images
+      .map((image, index) => ({ image, index }))
+      .filter(({ image }) => scope !== "selected" || image.id === selectedImageId);
 
-    startApplyingTransition(async () => {
-      try {
-        const executionContext = actionSettings;
-        const targetImageIds =
-          scope === "selected" && selectedImageId ? new Set([selectedImageId]) : null;
+    if (!targetEntries.length) {
+      return;
+    }
 
-        const nextImages = await Promise.all(
-          images.map(async (image) => {
-            if (targetImageIds && !targetImageIds.has(image.id)) {
-              return image;
-            }
+    setApplyProgress({
+      actionId: selectedActionId,
+      scope,
+      completed: 0,
+      total: targetEntries.length,
+      currentImageName: targetEntries[0]?.image.name ?? null,
+    });
 
-            const sourceVersion = getActiveVersion(image);
-            const nextVersion = await definition.apply(sourceVersion, executionContext);
+    try {
+      const nextImages = [...images];
 
-            return {
-              ...image,
-              activeVersionId: nextVersion.id,
-              versions: [...image.versions, nextVersion],
-            };
-          }),
+      for (const [processedCount, { image, index }] of targetEntries.entries()) {
+        setApplyProgress((current) =>
+          current
+            ? {
+                ...current,
+                currentImageName: image.name,
+              }
+            : current,
         );
 
-        setImages(nextImages);
-      } catch (error) {
-        setErrorMessage(
-          error instanceof Error ? error.message : "The image action failed to complete.",
+        await yieldToBrowser();
+
+        const sourceVersion = getActiveVersion(nextImages[index] ?? image);
+        const nextVersion = await definition.apply(sourceVersion, executionContext);
+        nextImages[index] = {
+          ...image,
+          activeVersionId: nextVersion.id,
+          versions: [...image.versions, nextVersion],
+        };
+
+        setImages([...nextImages]);
+        setApplyProgress((current) =>
+          current
+            ? {
+                ...current,
+                completed: processedCount + 1,
+                currentImageName:
+                  processedCount + 1 < targetEntries.length
+                    ? targetEntries[processedCount + 1]?.image.name ?? null
+                    : null,
+              }
+            : current,
         );
       }
-    });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "The image action failed to complete.",
+      );
+    } finally {
+      setApplyProgress(null);
+    }
   }
 
   function resetWorkspace() {
@@ -346,13 +384,14 @@ export function BulkImageEditor() {
   }
 
   function downloadAll() {
-    if (!images.length) {
+    if (!images.length || isApplying || isDownloading) {
       return;
     }
 
     setErrorMessage(null);
+    setIsDownloading(true);
 
-    startDownloadTransition(async () => {
+    void (async () => {
       try {
         const zip = new JSZip();
 
@@ -374,27 +413,30 @@ export function BulkImageEditor() {
         setErrorMessage(
           error instanceof Error ? error.message : "Failed to export the image archive.",
         );
+      } finally {
+        setIsDownloading(false);
       }
-    });
+    })();
   }
 
   return (
-    <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(248,244,236,0.98)_40%,_#e9dfcc_100%)] text-zinc-950">
+    <main className="h-screen overflow-hidden bg-background text-foreground">
       <div className="mx-auto flex h-screen w-full max-w-[1600px] flex-col px-4 py-4 sm:px-6 lg:px-8">
         {!images.length ? (
           <BulkImageEditorEmptyState onFilesSelected={handleFilesSelected} />
         ) : (
-          <section className="flex h-[calc(100vh-2rem)] min-h-0 flex-col overflow-hidden rounded-[2rem] border border-black/10 bg-[#f6f0e6] shadow-[0_28px_90px_rgba(83,64,39,0.18)]">
+          <section className="flex h-[calc(100vh-2rem)] min-h-0 flex-col overflow-hidden rounded-[2rem] border border-border bg-card shadow-xl">
             <BulkImageEditorWorkspaceHeader
               downloadFormat={downloadFormat}
               imageCount={images.length}
+              isApplying={isApplying}
               isDownloading={isDownloading}
               onDownloadAll={downloadAll}
               onDownloadFormatChange={setDownloadFormat}
               onResetWorkspace={resetWorkspace}
             />
 
-            <div className="grid min-h-0 flex-1 gap-px overflow-hidden bg-black/8 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)_360px]">
+            <div className="grid min-h-0 flex-1 gap-px overflow-hidden bg-border lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)_360px]">
               <BulkImageEditorImageListSidebar
                 images={images}
                 selectedImageId={selectedImageId}
@@ -416,6 +458,7 @@ export function BulkImageEditor() {
                 errorMessage={errorMessage}
                 hasImages={images.length > 0}
                 hasSelectedImage={selectedImage !== null}
+                progress={applyProgress}
                 isApplying={isApplying}
                 selectedActionId={selectedActionId}
                 onApplyAction={applyAction}

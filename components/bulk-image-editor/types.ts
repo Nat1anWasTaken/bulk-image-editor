@@ -46,3 +46,11 @@ export type ActionExecutionContext = {
   crop: CropSettings;
   "remove-background": RemoveBackgroundSettings;
 };
+
+export type ActionProgress = {
+  actionId: EditorActionId;
+  scope: "selected" | "all";
+  completed: number;
+  total: number;
+  currentImageName: string | null;
+};

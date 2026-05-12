@@ -3,6 +3,7 @@ import { Crop, Eraser, Layers3, LoaderCircle, Scissors, Sparkles } from "lucide-
 import { ACTIONS } from "@/components/bulk-image-editor/actions";
 import { formatPercent } from "@/components/bulk-image-editor/editor-helpers";
 import type {
+  ActionProgress,
   EditorActionId,
   EditorActionSettings,
   RemoveBackgroundSettings,
@@ -32,6 +33,7 @@ type BulkImageEditorActionSidebarProps = {
   errorMessage: string | null;
   hasImages: boolean;
   isApplying: boolean;
+  progress: ActionProgress | null;
   selectedActionId: EditorActionId;
   hasSelectedImage: boolean;
   onApplyAction: (scope: "selected" | "all") => void;
@@ -71,6 +73,7 @@ export function BulkImageEditorActionSidebar({
   hasImages,
   hasSelectedImage,
   isApplying,
+  progress,
   selectedActionId,
   onApplyAction,
   onRemoveBackgroundModelChange,
@@ -81,12 +84,13 @@ export function BulkImageEditorActionSidebar({
 }: BulkImageEditorActionSidebarProps) {
   const selectedActionIcon = selectedActionId === "crop" ? Scissors : Sparkles;
   const SelectedActionIcon = selectedActionIcon;
+  const progressValue = progress ? Math.round((progress.completed / progress.total) * 100) : 0;
 
   return (
-    <aside className="flex min-h-0 flex-col bg-[#fffdf8]">
-      <div className="border-b border-black/8 px-5 py-4">
-        <p className="text-sm font-medium text-stone-900">Actions</p>
-        <p className="mt-1 text-sm text-stone-600">
+    <aside className="flex min-h-0 flex-col bg-background">
+      <div className="border-b border-border px-5 py-4">
+        <p className="text-sm font-medium text-foreground">Actions</p>
+        <p className="text-muted-foreground mt-1 text-sm">
           Each action creates a new version instead of overwriting the current one.
         </p>
       </div>
@@ -103,8 +107,8 @@ export function BulkImageEditorActionSidebar({
                   className={cn(
                     "rounded-[1.5rem] border p-4 text-left transition-colors",
                     selectedActionId === action.id
-                      ? "border-stone-950 bg-stone-950 text-stone-50"
-                      : "border-black/8 bg-stone-50 hover:bg-stone-100",
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-muted/50 hover:bg-muted",
                   )}
                 >
                   <div className="flex items-center gap-3">
@@ -112,8 +116,8 @@ export function BulkImageEditorActionSidebar({
                       className={cn(
                         "inline-flex size-10 items-center justify-center rounded-2xl",
                         selectedActionId === action.id
-                          ? "bg-white/12"
-                          : "bg-[#eadabe] text-stone-950",
+                          ? "bg-primary-foreground/12"
+                          : "bg-accent text-accent-foreground",
                       )}
                     >
                       {action.id === "crop" ? (
@@ -128,8 +132,8 @@ export function BulkImageEditorActionSidebar({
                         className={cn(
                           "mt-1 text-sm",
                           selectedActionId === action.id
-                            ? "text-stone-200"
-                            : "text-stone-600",
+                            ? "text-primary-foreground/80"
+                            : "text-muted-foreground",
                         )}
                       >
                         {action.description}
@@ -142,9 +146,9 @@ export function BulkImageEditorActionSidebar({
           </div>
 
           {selectedActionId === "crop" ? (
-            <Card className="rounded-[1.5rem] border-black/8 bg-[#faf6ef] shadow-none">
+            <Card className="rounded-[1.5rem] border-border bg-card shadow-none">
               <CardHeader className="p-4 pb-0">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium text-stone-900">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <Scissors className="size-4" />
                   Crop frame
                 </CardTitle>
@@ -155,7 +159,7 @@ export function BulkImageEditorActionSidebar({
 
                   return (
                     <Label key={key} className="grid gap-2">
-                      <div className="flex items-center justify-between text-sm text-stone-700">
+                      <div className="text-muted-foreground flex items-center justify-between text-sm">
                         <span>{label}</span>
                         <span>{formatPercent(value)}</span>
                       </div>
@@ -174,9 +178,9 @@ export function BulkImageEditorActionSidebar({
               </CardContent>
             </Card>
           ) : (
-            <Card className="rounded-[1.5rem] border-black/8 bg-[#faf6ef] shadow-none">
+            <Card className="rounded-[1.5rem] border-border bg-card shadow-none">
               <CardHeader className="p-4 pb-0">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium text-stone-900">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <Sparkles className="size-4" />
                   Background detection
                 </CardTitle>
@@ -195,15 +199,15 @@ export function BulkImageEditorActionSidebar({
                         className={cn(
                           "rounded-[1.2rem] border p-3 text-left transition-colors",
                           isActive
-                            ? "border-stone-950 bg-stone-950 text-stone-50"
-                            : "border-black/8 bg-white hover:bg-stone-100",
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background hover:bg-muted",
                         )}
                       >
                         <p className="text-sm font-medium">{label}</p>
                         <p
                           className={cn(
                             "mt-1 text-sm leading-6",
-                            isActive ? "text-stone-200" : "text-stone-600",
+                            isActive ? "text-primary-foreground/80" : "text-muted-foreground",
                           )}
                         >
                           {description}
@@ -214,7 +218,7 @@ export function BulkImageEditorActionSidebar({
                 </div>
                 {actionSettings["remove-background"].provider === "imgly" ? (
                   <div className="mt-4 grid gap-2">
-                    <div className="flex items-center justify-between text-sm text-stone-700">
+                    <div className="text-muted-foreground flex items-center justify-between text-sm">
                       <span>AI model</span>
                       <span>
                         {actionSettings["remove-background"].model === "isnet_quint8"
@@ -230,7 +234,7 @@ export function BulkImageEditorActionSidebar({
                         )
                       }
                     >
-                      <SelectTrigger className="w-full rounded-2xl border-black/10 bg-white">
+                      <SelectTrigger className="w-full rounded-2xl border-border bg-background">
                         <SelectValue placeholder="AI model" />
                       </SelectTrigger>
                       <SelectContent>
@@ -241,7 +245,7 @@ export function BulkImageEditorActionSidebar({
                   </div>
                 ) : null}
                 <Label className="mt-4 grid gap-2">
-                  <div className="flex items-center justify-between text-sm text-stone-700">
+                  <div className="text-muted-foreground flex items-center justify-between text-sm">
                     <span>Edge color tolerance</span>
                     <span>{actionSettings["remove-background"].threshold}</span>
                   </div>
@@ -257,7 +261,7 @@ export function BulkImageEditorActionSidebar({
                     }
                   />
                 </Label>
-                <p className="mt-3 text-sm leading-6 text-stone-600">
+                <p className="text-muted-foreground mt-3 text-sm leading-6">
                   Use the AI engine for cleaner masks. The edge-based fallback is
                   useful when you need a quick local pass or want to avoid model
                   downloads.
@@ -266,17 +270,40 @@ export function BulkImageEditorActionSidebar({
             </Card>
           )}
 
-          <Card className="rounded-[1.5rem] border-black/8 bg-stone-950 text-stone-50 shadow-none">
+          <Card className="rounded-[1.5rem] border-border bg-foreground text-background shadow-none">
             <CardHeader className="p-4 pb-0">
               <CardTitle className="text-sm font-medium">Process queue</CardTitle>
-              <CardDescription className="mt-2 text-sm leading-6 text-stone-300">
+              <CardDescription className="mt-2 text-sm leading-6 text-background/70">
                 Apply the selected action to the active image or to every image using
                 each image&apos;s currently active version as input.
               </CardDescription>
             </CardHeader>
             <CardContent className="mt-4 grid gap-3 p-4">
+              {progress ? (
+                <div className="rounded-[1.2rem] border border-border/30 bg-background/10 p-3">
+                  <div className="flex items-center justify-between gap-3 text-sm text-background">
+                    <span>
+                      {progress.scope === "all" ? "Batch progress" : "Selected image"}
+                    </span>
+                    <span>
+                      {progress.completed}/{progress.total}
+                    </span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-background/15">
+                    <div
+                      className="h-full rounded-full bg-primary transition-[width] duration-200"
+                      style={{ width: `${progressValue}%` }}
+                    />
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-background/70">
+                    {progress.currentImageName
+                      ? `Processing ${progress.currentImageName}`
+                      : "Finishing up results."}
+                  </p>
+                </div>
+              ) : null}
               <Button
-                className="w-full bg-[#e7d0a4] text-stone-950 hover:bg-[#dec18a]"
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/80"
                 onClick={() => onApplyAction("selected")}
                 disabled={!hasSelectedImage || isApplying}
               >
@@ -289,7 +316,7 @@ export function BulkImageEditorActionSidebar({
               </Button>
               <Button
                 variant="outline"
-                className="w-full border-white/15 bg-white/8 text-white hover:bg-white/12"
+                className="w-full border-border/30 bg-background/10 text-background hover:bg-background/15"
                 onClick={() => onApplyAction("all")}
                 disabled={!hasImages || isApplying}
               >
@@ -298,7 +325,9 @@ export function BulkImageEditorActionSidebar({
                 ) : (
                   <Layers3 className="size-4" />
                 )}
-                Bulk Apply to All Images
+                {isApplying && progress?.scope === "all"
+                  ? "Applying to All Images..."
+                  : "Bulk Apply to All Images"}
               </Button>
             </CardContent>
           </Card>

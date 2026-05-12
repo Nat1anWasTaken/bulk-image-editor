@@ -21,10 +21,10 @@ export function BulkImageEditorImageListSidebar({
   onSelectVersion,
 }: BulkImageEditorImageListSidebarProps) {
   return (
-    <aside className="flex min-h-0 flex-col bg-[#fbf8f2]">
-      <div className="border-b border-black/8 px-5 py-4">
-        <p className="text-sm font-medium text-stone-900">Images and versions</p>
-        <p className="mt-1 text-sm text-stone-600">
+    <aside className="flex min-h-0 flex-col bg-background">
+      <div className="border-b border-border px-5 py-4">
+        <p className="text-sm font-medium text-foreground">Images and versions</p>
+        <p className="text-muted-foreground mt-1 text-sm">
           Newer versions appear to the right for each image.
         </p>
       </div>
@@ -41,12 +41,12 @@ export function BulkImageEditorImageListSidebar({
                 className={cn(
                   "rounded-[1.5rem] p-3 text-left shadow-none transition-colors",
                   selectedImageId === image.id
-                    ? "border-stone-950 bg-white shadow-sm"
-                    : "border-black/8 bg-[#f3ece0] hover:bg-white",
+                    ? "border-primary bg-card shadow-sm"
+                    : "border-border bg-muted/50 hover:bg-muted",
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-[1.1rem] bg-stone-200">
+                  <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-[1.1rem] bg-muted">
                     <Image
                       src={activeVersion.objectUrl}
                       alt={image.name}
@@ -58,14 +58,14 @@ export function BulkImageEditorImageListSidebar({
                   </div>
 
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-stone-950">
+                    <p className="truncate text-sm font-semibold text-foreground">
                       {image.name}
                     </p>
-                    <p className="mt-1 text-xs text-stone-600">
+                    <p className="text-muted-foreground mt-1 text-xs">
                       Active: {activeVersion.label} •{" "}
                       {formatDimensions(activeVersion.width, activeVersion.height)}
                     </p>
-                    <p className="mt-1 text-xs text-stone-500">
+                    <p className="text-muted-foreground/80 mt-1 text-xs">
                       {image.versions.length} versions
                     </p>
                   </div>
@@ -82,8 +82,8 @@ export function BulkImageEditorImageListSidebar({
                           className={cn(
                             "flex items-center gap-2 rounded-full border px-2 py-1.5 text-xs whitespace-nowrap transition-colors",
                             isActive
-                              ? "border-stone-950 bg-stone-950 text-stone-50"
-                              : "border-black/8 bg-white text-stone-700 hover:bg-stone-100",
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background text-muted-foreground hover:bg-muted",
                           )}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -98,7 +98,7 @@ export function BulkImageEditorImageListSidebar({
                             }
                           }}
                         >
-                          <span className="inline-flex size-6 items-center justify-center rounded-full bg-black/6 text-[11px] font-semibold text-current">
+                          <span className="inline-flex size-6 items-center justify-center rounded-full bg-foreground/8 text-[11px] font-semibold text-current">
                             {index + 1}
                           </span>
                           <span>{version.label}</span>
