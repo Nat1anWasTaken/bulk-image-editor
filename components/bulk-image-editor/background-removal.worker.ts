@@ -42,7 +42,20 @@ type BackgroundRemovalResponse =
   | BackgroundRemovalFailure;
 
 let rembgEnvironmentReady = false;
+let rembgWebGPUDisabled = false;
+let imglyWebGPUDisabled = false;
 const rembgSessionCache = new Map<string, Promise<BaseSession>>();
+
+function isWebGPUUnsupportedOpError(error: unknown) {
+  const message =
+    error instanceof Error
+      ? `${error.message}\n${error.stack ?? ""}`
+      : String(error);
+  return (
+    /not yet supported|not supported|webgpu/i.test(message) &&
+    /maxpool|ceil|shape computation|kernel|jsep|webgpu/i.test(message)
+  );
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -121,7 +134,8 @@ async function getRembgSession(model: RemoveBackgroundSettings["model"]) {
   ensureRembgEnvironment();
 
   const rembgModel = getRembgModel(model);
-  const cachedSession = rembgSessionCache.get(rembgModel);
+  const cacheKey = `${rembgModel}:${rembgWebGPUDisabled ? "wasm" : "webgpu"}`;
+  const cachedSession = rembgSessionCache.get(cacheKey);
 
   if (cachedSession) {
     return cachedSession;
@@ -142,11 +156,15 @@ async function getRembgSession(model: RemoveBackgroundSettings["model"]) {
 
     rembgConfig.setCustomModelPath(rembgModel, modelPath);
 
+    const sessionOptions = rembgWebGPUDisabled
+      ? { executionProviders: ["wasm"] }
+      : {
+          preferWebGPU: true,
+          webgpuPowerPreference: "high-performance" as const,
+        };
+
     try {
-      return await createRembgSession(rembgModel, undefined, {
-        preferWebGPU: true,
-        webgpuPowerPreference: "high-performance",
-      });
+      return await createRembgSession(rembgModel, undefined, sessionOptions);
     } catch (error) {
       throw new Error(
         `Failed to load rembg-web model "${rembgModel}" from ${modelPath}. Verify that public/models/${rembgModel}.onnx exists and is readable.`,
@@ -155,13 +173,25 @@ async function getRembgSession(model: RemoveBackgroundSettings["model"]) {
     }
   })();
 
-  rembgSessionCache.set(rembgModel, sessionPromise);
+  rembgSessionCache.set(cacheKey, sessionPromise);
 
   try {
     return await sessionPromise;
   } catch (error) {
-    rembgSessionCache.delete(rembgModel);
+    rembgSessionCache.delete(cacheKey);
     throw error;
+  }
+}
+
+function disableRembgWebGPU() {
+  if (rembgWebGPUDisabled) {
+    return;
+  }
+  rembgWebGPUDisabled = true;
+  for (const key of Array.from(rembgSessionCache.keys())) {
+    if (key.endsWith(":webgpu")) {
+      rembgSessionCache.delete(key);
+    }
   }
 }
 
@@ -309,14 +339,28 @@ async function removeBackgroundWithEdgeFlood(
 }
 
 async function removeBackgroundWithImgly(blob: Blob, settings: RemoveBackgroundSettings) {
-  const nextBlob = await removeBackground(blob, {
-    device: "gpu",
-    model: getImglyModel(settings.model),
-    output: {
-      format: "image/png",
-      quality: 1,
-    },
-  });
+  const runImgly = (device: "cpu" | "gpu") =>
+    removeBackground(blob, {
+      device,
+      model: getImglyModel(settings.model),
+      output: {
+        format: "image/png",
+        quality: 1,
+      },
+    });
+
+  let nextBlob: Blob;
+  try {
+    nextBlob = await runImgly(imglyWebGPUDisabled ? "cpu" : "gpu");
+  } catch (error) {
+    if (!imglyWebGPUDisabled && isWebGPUUnsupportedOpError(error)) {
+      imglyWebGPUDisabled = true;
+      nextBlob = await runImgly("cpu");
+    } else {
+      throw error;
+    }
+  }
+
   const bitmap = await bitmapFromBlob(nextBlob);
 
   try {
@@ -335,7 +379,6 @@ async function removeBackgroundWithRembg(
   blob: Blob,
   settings: RemoveBackgroundSettings,
 ) {
-  const session = await getRembgSession(settings.model);
   const bitmap = await bitmapFromBlob(blob);
 
   try {
@@ -348,10 +391,25 @@ async function removeBackgroundWithRembg(
 
     context.drawImage(bitmap, 0, 0);
 
-    const nextBlob = await removeRembgBackground(
-      canvas as unknown as HTMLCanvasElement,
-      { session },
-    );
+    const runWithCurrentBackend = async () => {
+      const session = await getRembgSession(settings.model);
+      return removeRembgBackground(canvas as unknown as HTMLCanvasElement, {
+        session,
+      });
+    };
+
+    let nextBlob: Blob;
+    try {
+      nextBlob = await runWithCurrentBackend();
+    } catch (error) {
+      if (!rembgWebGPUDisabled && isWebGPUUnsupportedOpError(error)) {
+        disableRembgWebGPU();
+        nextBlob = await runWithCurrentBackend();
+      } else {
+        throw error;
+      }
+    }
+
     const resultBitmap = await bitmapFromBlob(nextBlob);
 
     try {
