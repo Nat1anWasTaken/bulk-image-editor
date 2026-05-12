@@ -69,8 +69,7 @@ export async function applyActionToImages({
         index,
         nextImage: {
           ...currentImage,
-          activeVersionId:
-            scope === "selected" ? nextVersion.id : currentImage.activeVersionId,
+          activeVersionId: nextVersion.id,
           versions: [...currentImage.versions, nextVersion],
         },
       };
