@@ -102,6 +102,29 @@ export function BulkImageEditor() {
       }
 
       const key = event.key.toLowerCase();
+      if (key === "h" || key === "l") {
+        const currentImage = images[selectedImageIndex] ?? images[0];
+
+        if (!currentImage) {
+          return;
+        }
+
+        const activeVersion = getActiveVersion(currentImage);
+        const currentVersionIndex = currentImage.versions.findIndex(
+          (version) => version.id === activeVersion.id,
+        );
+        const direction = key === "h" ? -1 : 1;
+        const nextVersion = currentImage.versions[currentVersionIndex + direction];
+
+        if (!nextVersion) {
+          return;
+        }
+
+        event.preventDefault();
+        setActiveVersion(currentImage.id, nextVersion.id);
+        return;
+      }
+
       if (key !== "j" && key !== "k") {
         return;
       }
@@ -331,7 +354,7 @@ export function BulkImageEditor() {
     });
 
     try {
-      const nextImages = [...images];
+      let workingImages = images;
 
       for (const [processedCount, { image, index }] of targetEntries.entries()) {
         setApplyProgress((current) =>
@@ -345,15 +368,26 @@ export function BulkImageEditor() {
 
         await yieldToBrowser();
 
-        const sourceVersion = getActiveVersion(nextImages[index] ?? image);
+        const currentImage = workingImages[index] ?? image;
+        const sourceVersion = getActiveVersion(currentImage);
         const nextVersion = await definition.apply(sourceVersion, executionContext);
-        nextImages[index] = {
-          ...image,
+        const nextImage = {
+          ...currentImage,
           activeVersionId: nextVersion.id,
-          versions: [...image.versions, nextVersion],
+          versions: [...currentImage.versions, nextVersion],
         };
 
-        setImages([...nextImages]);
+        workingImages = [
+          ...workingImages.slice(0, index),
+          nextImage,
+          ...workingImages.slice(index + 1),
+        ];
+
+        setImages((currentImages) =>
+          currentImages.map((currentImage, currentIndex) =>
+            currentIndex === index ? nextImage : currentImage,
+          ),
+        );
         setApplyProgress((current) =>
           current
             ? {
