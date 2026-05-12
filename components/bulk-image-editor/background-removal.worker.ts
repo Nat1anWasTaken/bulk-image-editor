@@ -2,6 +2,9 @@
 
 import { removeBackground } from "@imgly/background-removal";
 
+import {
+  isImglyRemoveBackgroundModel,
+} from "@/components/bulk-image-editor/remove-background-options";
 import type { RemoveBackgroundSettings } from "@/components/bulk-image-editor/types";
 
 type BackgroundRemovalRequest = {
@@ -33,6 +36,12 @@ type BackgroundRemovalResponse =
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getImglyModel(
+  model: RemoveBackgroundSettings["model"],
+) {
+  return isImglyRemoveBackgroundModel(model) ? model : "isnet_quint8";
 }
 
 async function bitmapFromBlob(blob: Blob) {
@@ -181,7 +190,7 @@ async function removeBackgroundWithEdgeFlood(
 async function removeBackgroundWithImgly(blob: Blob, settings: RemoveBackgroundSettings) {
   const nextBlob = await removeBackground(blob, {
     device: "cpu",
-    model: settings.model,
+    model: getImglyModel(settings.model),
     output: {
       format: "image/png",
       quality: 1,

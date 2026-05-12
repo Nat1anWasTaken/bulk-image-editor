@@ -18,6 +18,7 @@ import {
   fileToEditorImage,
   getActiveVersion,
 } from "@/components/bulk-image-editor/image-utils";
+import { getCompatibleRemoveBackgroundModel } from "@/components/bulk-image-editor/remove-background-options";
 import { BulkImageEditorWorkspaceHeader } from "@/components/bulk-image-editor/workspace-header";
 import type {
   ActionProgress,
@@ -181,6 +182,10 @@ export function BulkImageEditor() {
       "remove-background": {
         ...current["remove-background"],
         provider,
+        model: getCompatibleRemoveBackgroundModel(
+          provider,
+          current["remove-background"].model,
+        ),
       },
     }));
   }

@@ -16,6 +16,8 @@
 # next.js
 /.next/
 /out/
+public/models/*.onnx
+!public/models/.gitkeep
 
 # production
 /build

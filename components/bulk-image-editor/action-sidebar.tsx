@@ -2,6 +2,10 @@ import { Crop, Eraser, Layers3, LoaderCircle, Scissors, Sparkles } from "lucide-
 
 import { ACTIONS } from "@/components/bulk-image-editor/actions";
 import { formatPercent } from "@/components/bulk-image-editor/editor-helpers";
+import {
+  IMGLY_REMOVE_BACKGROUND_MODELS,
+  REMBG_REMOVE_BACKGROUND_MODELS,
+} from "@/components/bulk-image-editor/remove-background-options";
 import type {
   ActionProgress,
   EditorActionId,
@@ -61,11 +65,38 @@ const backgroundProviders = [
     "Higher quality matting in-browser. First run downloads the model.",
   ],
   [
+    "rembg",
+    "rembg-web",
+    "Run rembg-web with ONNX models served locally from /models.",
+  ],
+  [
     "edge",
     "Edge Flood Fill",
     "Fast fallback for clean, flat backgrounds with no model download.",
   ],
 ] as const;
+
+const imglyModels: Array<{
+  value: (typeof IMGLY_REMOVE_BACKGROUND_MODELS)[number];
+  label: string;
+  size: string;
+}> = [
+  { value: "isnet_quint8", label: "Small model", size: "~40MB" },
+  { value: "isnet_fp16", label: "Medium model", size: "~80MB" },
+];
+
+const rembgModels: Array<{
+  value: (typeof REMBG_REMOVE_BACKGROUND_MODELS)[number];
+  label: string;
+  size: string;
+}> = [
+  { value: "u2netp", label: "U2NetP", size: "~5MB" },
+  { value: "u2net", label: "U2Net", size: "~176MB" },
+  { value: "u2net_human_seg", label: "Human Seg", size: "~176MB" },
+  { value: "isnet-general-use", label: "ISNet General", size: "~178MB" },
+  { value: "isnet-anime", label: "ISNet Anime", size: "~178MB" },
+  { value: "silueta", label: "Silueta", size: "~43MB" },
+];
 
 export function BulkImageEditorActionSidebar({
   actionSettings,
@@ -85,6 +116,14 @@ export function BulkImageEditorActionSidebar({
   const selectedActionIcon = selectedActionId === "crop" ? Scissors : Sparkles;
   const SelectedActionIcon = selectedActionIcon;
   const progressValue = progress ? Math.round((progress.completed / progress.total) * 100) : 0;
+  const removeBackgroundSettings = actionSettings["remove-background"];
+  const showImglyModels = removeBackgroundSettings.provider === "imgly";
+  const showRembgModels = removeBackgroundSettings.provider === "rembg";
+  const showEdgeThreshold = removeBackgroundSettings.provider === "edge";
+  const modelOptions = showImglyModels ? imglyModels : showRembgModels ? rembgModels : [];
+  const selectedModelDetails = modelOptions.find(
+    ({ value }) => value === removeBackgroundSettings.model,
+  );
 
   return (
     <aside className="flex min-h-0 flex-col bg-background">
@@ -216,18 +255,14 @@ export function BulkImageEditorActionSidebar({
                     );
                   })}
                 </div>
-                {actionSettings["remove-background"].provider === "imgly" ? (
+                {showImglyModels || showRembgModels ? (
                   <div className="mt-4 grid gap-2">
                     <div className="text-muted-foreground flex items-center justify-between text-sm">
-                      <span>AI model</span>
-                      <span>
-                        {actionSettings["remove-background"].model === "isnet_quint8"
-                          ? "~40MB"
-                          : "~80MB"}
-                      </span>
+                      <span>{showImglyModels ? "AI model" : "ONNX model"}</span>
+                      <span>{selectedModelDetails?.size ?? "Model file required"}</span>
                     </div>
                     <Select
-                      value={actionSettings["remove-background"].model}
+                      value={removeBackgroundSettings.model}
                       onValueChange={(value) =>
                         onRemoveBackgroundModelChange(
                           value as RemoveBackgroundSettings["model"],
@@ -235,36 +270,43 @@ export function BulkImageEditorActionSidebar({
                       }
                     >
                       <SelectTrigger className="w-full rounded-2xl border-border bg-background">
-                        <SelectValue placeholder="AI model" />
+                        <SelectValue placeholder={showImglyModels ? "AI model" : "ONNX model"} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="isnet_quint8">Small model</SelectItem>
-                        <SelectItem value="isnet_fp16">Medium model</SelectItem>
+                        {modelOptions.map(({ value, label }) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                 ) : null}
-                <Label className="mt-4 grid gap-2">
-                  <div className="text-muted-foreground flex items-center justify-between text-sm">
-                    <span>Edge color tolerance</span>
-                    <span>{actionSettings["remove-background"].threshold}</span>
-                  </div>
-                  <Slider
-                    min={8}
-                    max={180}
-                    step={1}
-                    value={[actionSettings["remove-background"].threshold]}
-                    onValueChange={(nextValue) =>
-                      onRemoveBackgroundThresholdChange(
-                        nextValue[0] ?? actionSettings["remove-background"].threshold,
-                      )
-                    }
-                  />
-                </Label>
+                {showEdgeThreshold ? (
+                  <Label className="mt-4 grid gap-2">
+                    <div className="text-muted-foreground flex items-center justify-between text-sm">
+                      <span>Edge color tolerance</span>
+                      <span>{removeBackgroundSettings.threshold}</span>
+                    </div>
+                    <Slider
+                      min={8}
+                      max={180}
+                      step={1}
+                      value={[removeBackgroundSettings.threshold]}
+                      onValueChange={(nextValue) =>
+                        onRemoveBackgroundThresholdChange(
+                          nextValue[0] ?? removeBackgroundSettings.threshold,
+                        )
+                      }
+                    />
+                  </Label>
+                ) : null}
                 <p className="text-muted-foreground mt-3 text-sm leading-6">
-                  Use the AI engine for cleaner masks. The edge-based fallback is
-                  useful when you need a quick local pass or want to avoid model
-                  downloads.
+                  {showImglyModels
+                    ? "IMG.LY is the easiest high-quality in-browser option and downloads its model automatically."
+                    : showRembgModels
+                      ? "rembg-web expects a matching ONNX file under /models, for example /models/u2netp.onnx."
+                      : "Edge flood fill is useful for quick, flat-background cleanup when you want to avoid model-based masking."}
                 </p>
               </CardContent>
             </Card>

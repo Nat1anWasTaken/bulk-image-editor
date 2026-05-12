@@ -7,10 +7,22 @@ export type CropSettings = {
   height: number;
 };
 
+export type RemoveBackgroundProvider = "edge" | "imgly" | "rembg";
+
+export type ImglyRemoveBackgroundModel = "isnet_quint8" | "isnet_fp16";
+
+export type RembgRemoveBackgroundModel =
+  | "u2netp"
+  | "u2net"
+  | "u2net_human_seg"
+  | "isnet-general-use"
+  | "isnet-anime"
+  | "silueta";
+
 export type RemoveBackgroundSettings = {
   threshold: number;
-  provider: "edge" | "imgly";
-  model: "isnet_quint8" | "isnet_fp16";
+  provider: RemoveBackgroundProvider;
+  model: ImglyRemoveBackgroundModel | RembgRemoveBackgroundModel;
 };
 
 export type EditorActionSettings = {

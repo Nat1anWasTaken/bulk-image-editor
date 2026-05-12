@@ -4,11 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "pnpm fetch-rembg-models all",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "fetch-rembg-models": "node scripts/fetch-rembg-models.mjs"
   },
   "dependencies": {
+    "@bunnio/rembg-web": "^1.0.2",
     "@imgly/background-removal": "^1.7.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -34,7 +34,7 @@ export const ACTIONS: Record<EditorActionId, ActionDefinition> = {
   "remove-background": {
     id: "remove-background",
     title: "Background Removal",
-    description: "Strip background colors connected to the image edges.",
+    description: "Remove backgrounds with IMG.LY AI, rembg-web, or edge flood fill.",
     async apply(sourceVersion, context) {
       const result = await removeBackgroundFromVersion(
         sourceVersion,
