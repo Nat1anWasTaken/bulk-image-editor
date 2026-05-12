@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import JSZip from "jszip";
 import { ACTIONS } from "@/components/bulk-image-editor/actions";
 import { BulkImageEditorActionSidebar } from "@/components/bulk-image-editor/action-sidebar";
+import { DEFAULT_BATCH_SIZE, normalizeBatchSize } from "@/components/bulk-image-editor/batch-processing";
 import { BulkImageEditorEmptyState } from "@/components/bulk-image-editor/empty-state";
 import {
   clamp,
@@ -11,21 +11,23 @@ import {
   MIN_CROP_SIZE,
   normalizeCrop,
 } from "@/components/bulk-image-editor/editor-helpers";
+import {
+  applyActionToImages,
+  exportImagesArchive,
+} from "@/components/bulk-image-editor/editor-operations";
 import { BulkImageEditorImageListSidebar } from "@/components/bulk-image-editor/image-list-sidebar";
 import { BulkImageEditorImagePreview } from "@/components/bulk-image-editor/image-preview";
-import {
-  encodeVersionForDownload,
-  fileToEditorImage,
-  getActiveVersion,
-} from "@/components/bulk-image-editor/image-utils";
+import { fileToEditorImage, getActiveVersion } from "@/components/bulk-image-editor/image-utils";
 import { getCompatibleRemoveBackgroundModel } from "@/components/bulk-image-editor/remove-background-options";
 import { BulkImageEditorWorkspaceHeader } from "@/components/bulk-image-editor/workspace-header";
 import type {
   ActionProgress,
+  DownloadProgress,
   EditorActionId,
   EditorActionSettings,
   EditorImage,
   ExportFormat,
+  ProcessingProgress,
   RemoveBackgroundSettings,
 } from "@/components/bulk-image-editor/types";
 
@@ -60,8 +62,10 @@ export function BulkImageEditor() {
   const [actionSettings, setActionSettings] =
     useState<EditorActionSettings>(INITIAL_ACTION_SETTINGS);
   const [downloadFormat, setDownloadFormat] = useState<ExportFormat>("png");
+  const [batchSize, setBatchSize] = useState(DEFAULT_BATCH_SIZE);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [applyProgress, setApplyProgress] = useState<ActionProgress | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const objectUrlsRef = useRef<string[]>([]);
   const previewFrameRef = useRef<HTMLDivElement | null>(null);
@@ -73,6 +77,8 @@ export function BulkImageEditor() {
   const selectedImageIndex = images.findIndex((image) => image.id === selectedImageId);
   const activeVersion = selectedImage ? getActiveVersion(selectedImage) : null;
   const isApplying = applyProgress !== null;
+  const isBusy = isApplying || isDownloading;
+  const processingProgress: ProcessingProgress | null = applyProgress ?? downloadProgress;
 
   useEffect(() => {
     objectUrlsRef.current = images.flatMap((image) =>
@@ -322,85 +328,31 @@ export function BulkImageEditor() {
     }
   }
 
-  function yieldToBrowser() {
-    return new Promise<void>((resolve) => {
-      window.setTimeout(resolve, 0);
-    });
-  }
-
   async function applyAction(scope: "selected" | "all") {
     const definition = ACTIONS[selectedActionId];
 
-    if (!definition || isApplying) {
+    if (!definition || isBusy) {
       return;
     }
 
     setErrorMessage(null);
-    const executionContext = actionSettings;
-    const targetEntries = images
-      .map((image, index) => ({ image, index }))
-      .filter(({ image }) => scope !== "selected" || image.id === selectedImageId);
-
-    if (!targetEntries.length) {
-      return;
-    }
-
-    setApplyProgress({
-      actionId: selectedActionId,
-      scope,
-      completed: 0,
-      total: targetEntries.length,
-      currentImageName: targetEntries[0]?.image.name ?? null,
-    });
-
     try {
-      let workingImages = images;
+      await applyActionToImages({
+        actionId: selectedActionId,
+        actionSettings,
+        batchSize,
+        definition,
+        images,
+        onProgress: (progress, nextImages) => {
+          setApplyProgress(progress);
 
-      for (const [processedCount, { image, index }] of targetEntries.entries()) {
-        setApplyProgress((current) =>
-          current
-            ? {
-                ...current,
-                currentImageName: image.name,
-              }
-            : current,
-        );
-
-        await yieldToBrowser();
-
-        const currentImage = workingImages[index] ?? image;
-        const sourceVersion = getActiveVersion(currentImage);
-        const nextVersion = await definition.apply(sourceVersion, executionContext);
-        const nextImage = {
-          ...currentImage,
-          activeVersionId: nextVersion.id,
-          versions: [...currentImage.versions, nextVersion],
-        };
-
-        workingImages = [
-          ...workingImages.slice(0, index),
-          nextImage,
-          ...workingImages.slice(index + 1),
-        ];
-
-        setImages((currentImages) =>
-          currentImages.map((currentImage, currentIndex) =>
-            currentIndex === index ? nextImage : currentImage,
-          ),
-        );
-        setApplyProgress((current) =>
-          current
-            ? {
-                ...current,
-                completed: processedCount + 1,
-                currentImageName:
-                  processedCount + 1 < targetEntries.length
-                    ? targetEntries[processedCount + 1]?.image.name ?? null
-                    : null,
-              }
-            : current,
-        );
-      }
+          if (nextImages) {
+            setImages(nextImages);
+          }
+        },
+        scope,
+        selectedImageId,
+      });
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "The image action failed to complete.",
@@ -420,10 +372,12 @@ export function BulkImageEditor() {
     setImages([]);
     setSelectedImageId(null);
     setErrorMessage(null);
+    setApplyProgress(null);
+    setDownloadProgress(null);
   }
 
   function downloadAll() {
-    if (!images.length || isApplying || isDownloading) {
+    if (!images.length || isBusy) {
       return;
     }
 
@@ -432,16 +386,12 @@ export function BulkImageEditor() {
 
     void (async () => {
       try {
-        const zip = new JSZip();
-
-        for (const image of images) {
-          const active = getActiveVersion(image);
-          const encoded = await encodeVersionForDownload(active, downloadFormat);
-          const extension = downloadFormat === "png" ? "png" : "jpg";
-          zip.file(`${image.fileNameStem}.${extension}`, encoded);
-        }
-
-        const archive = await zip.generateAsync({ type: "blob" });
+        const archive = await exportImagesArchive({
+          batchSize,
+          downloadFormat,
+          images,
+          onProgress: setDownloadProgress,
+        });
         const downloadUrl = URL.createObjectURL(archive);
         const link = document.createElement("a");
         link.href = downloadUrl;
@@ -453,6 +403,7 @@ export function BulkImageEditor() {
           error instanceof Error ? error.message : "Failed to export the image archive.",
         );
       } finally {
+        setDownloadProgress(null);
         setIsDownloading(false);
       }
     })();
@@ -494,13 +445,16 @@ export function BulkImageEditor() {
               />
               <BulkImageEditorActionSidebar
                 actionSettings={actionSettings}
+                batchSize={batchSize}
                 errorMessage={errorMessage}
                 hasImages={images.length > 0}
                 hasSelectedImage={selectedImage !== null}
-                progress={applyProgress}
+                isDownloading={isDownloading}
+                progress={processingProgress}
                 isApplying={isApplying}
                 selectedActionId={selectedActionId}
                 onApplyAction={applyAction}
+                onBatchSizeChange={(value) => setBatchSize(normalizeBatchSize(value))}
                 onRemoveBackgroundModelChange={updateRemoveBackgroundModel}
                 onRemoveBackgroundProviderChange={updateRemoveBackgroundProvider}
                 onRemoveBackgroundThresholdChange={updateRemoveBackgroundThreshold}

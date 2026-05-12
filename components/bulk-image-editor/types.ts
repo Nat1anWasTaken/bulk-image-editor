@@ -60,9 +60,19 @@ export type ActionExecutionContext = {
 };
 
 export type ActionProgress = {
+  kind: "apply";
   actionId: EditorActionId;
   scope: "selected" | "all";
   completed: number;
   total: number;
   currentImageName: string | null;
 };
+
+export type DownloadProgress = {
+  kind: "download";
+  completed: number;
+  total: number;
+  currentImageName: string | null;
+};
+
+export type ProcessingProgress = ActionProgress | DownloadProgress;

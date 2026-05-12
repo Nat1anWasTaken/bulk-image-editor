@@ -11,6 +11,7 @@ Bulk Image Editor is a browser-based workspace for batch-editing image sets with
   - `rembg-web`
   - `Edge Flood Fill`
 - Apply actions to one image or the entire batch
+- Tune bulk apply and zip export throughput with a batch size selector
 - Keep every edit as a new version instead of overwriting the source
 - Export the active version of every image as a `.zip` file
 
@@ -66,9 +67,10 @@ pnpm fetch-rembg-models all --force
    - `Crop`
    - `Background Removal`
 4. Tune the action settings.
-5. Apply the action to the selected image or to the full batch.
-6. Switch between versions from the image list sidebar.
-7. Export the active version of each image as a zip.
+5. Set the batch size for bulk apply and export throughput.
+6. Apply the action to the selected image or to the full batch.
+7. Switch between versions from the image list sidebar.
+8. Export the active version of each image as a zip.
 
 ### Crop
 

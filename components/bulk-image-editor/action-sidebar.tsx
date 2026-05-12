@@ -1,15 +1,16 @@
 import { Crop, Eraser, Layers3, LoaderCircle, Scissors, Sparkles } from "lucide-react";
 
 import { ACTIONS } from "@/components/bulk-image-editor/actions";
+import { BATCH_SIZE_OPTIONS } from "@/components/bulk-image-editor/batch-processing";
 import { formatPercent } from "@/components/bulk-image-editor/editor-helpers";
 import {
   IMGLY_REMOVE_BACKGROUND_MODELS,
   REMBG_REMOVE_BACKGROUND_MODELS,
 } from "@/components/bulk-image-editor/remove-background-options";
 import type {
-  ActionProgress,
   EditorActionId,
   EditorActionSettings,
+  ProcessingProgress,
   RemoveBackgroundSettings,
 } from "@/components/bulk-image-editor/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -34,13 +35,16 @@ import { cn } from "@/lib/utils";
 
 type BulkImageEditorActionSidebarProps = {
   actionSettings: EditorActionSettings;
+  batchSize: number;
   errorMessage: string | null;
   hasImages: boolean;
   isApplying: boolean;
-  progress: ActionProgress | null;
+  isDownloading: boolean;
+  progress: ProcessingProgress | null;
   selectedActionId: EditorActionId;
   hasSelectedImage: boolean;
   onApplyAction: (scope: "selected" | "all") => void;
+  onBatchSizeChange: (batchSize: number) => void;
   onRemoveBackgroundModelChange: (model: RemoveBackgroundSettings["model"]) => void;
   onRemoveBackgroundProviderChange: (provider: RemoveBackgroundSettings["provider"]) => void;
   onRemoveBackgroundThresholdChange: (threshold: number) => void;
@@ -100,19 +104,23 @@ const rembgModels: Array<{
 
 export function BulkImageEditorActionSidebar({
   actionSettings,
+  batchSize,
   errorMessage,
   hasImages,
   hasSelectedImage,
   isApplying,
+  isDownloading,
   progress,
   selectedActionId,
   onApplyAction,
+  onBatchSizeChange,
   onRemoveBackgroundModelChange,
   onRemoveBackgroundProviderChange,
   onRemoveBackgroundThresholdChange,
   onSelectedActionChange,
   onUpdateCropSetting,
 }: BulkImageEditorActionSidebarProps) {
+  const isBusy = isApplying || isDownloading;
   const selectedActionIcon = selectedActionId === "crop" ? Scissors : Sparkles;
   const SelectedActionIcon = selectedActionIcon;
   const progressValue = progress ? Math.round((progress.completed / progress.total) * 100) : 0;
@@ -124,6 +132,18 @@ export function BulkImageEditorActionSidebar({
   const selectedModelDetails = modelOptions.find(
     ({ value }) => value === removeBackgroundSettings.model,
   );
+  const progressLabel = progress
+    ? progress.kind === "download"
+      ? "Zip export"
+      : progress.scope === "all"
+        ? "Batch progress"
+        : "Selected image"
+    : null;
+  const progressStatus = progress?.currentImageName
+    ? progress.kind === "download"
+      ? `Encoding ${progress.currentImageName}`
+      : `Processing ${progress.currentImageName}`
+    : "Finishing up results.";
 
   return (
     <aside className="flex min-h-0 flex-col bg-background">
@@ -317,16 +337,34 @@ export function BulkImageEditorActionSidebar({
               <CardTitle className="text-sm font-medium">Process queue</CardTitle>
               <CardDescription className="mt-2 text-sm leading-6 text-background/70">
                 Apply the selected action to the active image or to every image using
-                each image&apos;s currently active version as input.
+                each image&apos;s currently active version as input. Batch size also
+                controls concurrent zip export work.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3 p-4 pt-4">
+              <div className="grid gap-2">
+                <Label className="text-sm font-medium text-background">Batch size</Label>
+                <Select
+                  value={String(batchSize)}
+                  onValueChange={(value) => onBatchSizeChange(Number(value))}
+                  disabled={isBusy}
+                >
+                  <SelectTrigger className="w-full rounded-2xl border-border/30 bg-background/10 text-background">
+                    <SelectValue placeholder="Batch size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BATCH_SIZE_OPTIONS.map((value) => (
+                      <SelectItem key={value} value={String(value)}>
+                        {value} at a time
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               {progress ? (
                 <div className="rounded-[1.2rem] border border-border/30 bg-background/10 p-3">
                   <div className="flex items-center justify-between gap-3 text-sm text-background">
-                    <span>
-                      {progress.scope === "all" ? "Batch progress" : "Selected image"}
-                    </span>
+                    <span>{progressLabel}</span>
                     <span>
                       {progress.completed}/{progress.total}
                     </span>
@@ -337,17 +375,13 @@ export function BulkImageEditorActionSidebar({
                       style={{ width: `${progressValue}%` }}
                     />
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-background/70">
-                    {progress.currentImageName
-                      ? `Processing ${progress.currentImageName}`
-                      : "Finishing up results."}
-                  </p>
+                  <p className="mt-3 text-sm leading-6 text-background/70">{progressStatus}</p>
                 </div>
               ) : null}
               <Button
                 className="w-full bg-primary text-primary-foreground hover:bg-primary/80"
                 onClick={() => onApplyAction("selected")}
-                disabled={!hasSelectedImage || isApplying}
+                disabled={!hasSelectedImage || isBusy}
               >
                 {isApplying ? (
                   <LoaderCircle className="size-4 animate-spin" />
@@ -360,14 +394,14 @@ export function BulkImageEditorActionSidebar({
                 variant="outline"
                 className="w-full border-border/30 bg-background/10 text-background hover:bg-background/15"
                 onClick={() => onApplyAction("all")}
-                disabled={!hasImages || isApplying}
+                disabled={!hasImages || isBusy}
               >
                 {isApplying ? (
                   <LoaderCircle className="size-4 animate-spin" />
                 ) : (
                   <Layers3 className="size-4" />
                 )}
-                {isApplying && progress?.scope === "all"
+                {isApplying && progress?.kind === "apply" && progress.scope === "all"
                   ? "Applying to All Images..."
                   : "Bulk Apply to All Images"}
               </Button>
