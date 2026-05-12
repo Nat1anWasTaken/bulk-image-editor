@@ -9,8 +9,77 @@ import type {
   RemoveBackgroundSettings,
 } from "@/components/bulk-image-editor/types";
 
+type BackgroundRemovalWorkerRequest = {
+  id: string;
+  blob: Blob;
+  settings: RemoveBackgroundSettings;
+};
+
+type BackgroundRemovalWorkerResponse =
+  | {
+      id: string;
+      ok: true;
+      result: Pick<ImageVersion, "blob" | "width" | "height" | "mimeType">;
+    }
+  | {
+      id: string;
+      ok: false;
+      error: string;
+    };
+
+let backgroundRemovalWorker: Worker | null = null;
+const backgroundRemovalResolvers = new Map<
+  string,
+  {
+    resolve: (value: Pick<ImageVersion, "blob" | "width" | "height" | "mimeType">) => void;
+    reject: (reason?: unknown) => void;
+  }
+>();
+
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function getBackgroundRemovalWorker() {
+  if (backgroundRemovalWorker) {
+    return backgroundRemovalWorker;
+  }
+
+  backgroundRemovalWorker = new Worker(
+    new URL("./background-removal.worker.ts", import.meta.url),
+    { type: "module" },
+  );
+  backgroundRemovalWorker.onmessage = (
+    event: MessageEvent<BackgroundRemovalWorkerResponse>,
+  ) => {
+    const pending = backgroundRemovalResolvers.get(event.data.id);
+
+    if (!pending) {
+      return;
+    }
+
+    backgroundRemovalResolvers.delete(event.data.id);
+
+    if (event.data.ok) {
+      pending.resolve(event.data.result);
+      return;
+    }
+
+    pending.reject(new Error(event.data.error));
+  };
+  backgroundRemovalWorker.onerror = (event) => {
+    const error = new Error(event.message || "Background removal worker crashed.");
+
+    for (const { reject } of backgroundRemovalResolvers.values()) {
+      reject(error);
+    }
+
+    backgroundRemovalResolvers.clear();
+    backgroundRemovalWorker?.terminate();
+    backgroundRemovalWorker = null;
+  };
+
+  return backgroundRemovalWorker;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -115,173 +184,24 @@ export async function cropVersion(
   };
 }
 
-function averageCornerColor(data: Uint8ClampedArray, width: number, height: number) {
-  const sampleRadius = Math.max(1, Math.floor(Math.min(width, height) * 0.02));
-  const corners = [
-    [0, 0],
-    [width - 1, 0],
-    [0, height - 1],
-    [width - 1, height - 1],
-  ];
-
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-  let alpha = 0;
-  let count = 0;
-
-  for (const [cx, cy] of corners) {
-    for (let y = Math.max(0, cy - sampleRadius); y <= Math.min(height - 1, cy + sampleRadius); y += 1) {
-      for (let x = Math.max(0, cx - sampleRadius); x <= Math.min(width - 1, cx + sampleRadius); x += 1) {
-        const index = (y * width + x) * 4;
-        red += data[index];
-        green += data[index + 1];
-        blue += data[index + 2];
-        alpha += data[index + 3];
-        count += 1;
-      }
-    }
-  }
-
-  return {
-    red: red / count,
-    green: green / count,
-    blue: blue / count,
-    alpha: alpha / count,
-  };
-}
-
-function colorDistance(
-  data: Uint8ClampedArray,
-  pixelIndex: number,
-  reference: { red: number; green: number; blue: number; alpha: number },
-) {
-  const dr = data[pixelIndex] - reference.red;
-  const dg = data[pixelIndex + 1] - reference.green;
-  const db = data[pixelIndex + 2] - reference.blue;
-  const da = data[pixelIndex + 3] - reference.alpha;
-
-  return Math.sqrt(dr * dr + dg * dg + db * db + da * da * 0.25);
-}
-
 export async function removeBackgroundFromVersion(
   version: ImageVersion,
   settings: RemoveBackgroundSettings,
 ): Promise<Pick<ImageVersion, "blob" | "width" | "height" | "mimeType">> {
-  if (settings.provider === "imgly") {
-    return removeBackgroundWithImgly(version, settings);
-  }
+  const worker = getBackgroundRemovalWorker();
+  const id = createId("bg-remove");
 
-  return removeBackgroundWithEdgeFlood(version, settings);
-}
+  return new Promise((resolve, reject) => {
+    backgroundRemovalResolvers.set(id, { resolve, reject });
 
-async function removeBackgroundWithEdgeFlood(
-  version: ImageVersion,
-  settings: RemoveBackgroundSettings,
-): Promise<Pick<ImageVersion, "blob" | "width" | "height" | "mimeType">> {
-  const image = await loadImageFromBlob(version.blob);
-  const canvas = document.createElement("canvas");
-  canvas.width = image.naturalWidth;
-  canvas.height = image.naturalHeight;
+    const request: BackgroundRemovalWorkerRequest = {
+      id,
+      blob: version.blob,
+      settings,
+    };
 
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-
-  if (!context) {
-    throw new Error("Canvas context is unavailable.");
-  }
-
-  context.drawImage(image, 0, 0);
-  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  const { data, width, height } = imageData;
-  const reference = averageCornerColor(data, width, height);
-  const threshold = clamp(settings.threshold, 8, 180);
-  const queue = new Uint32Array(width * height);
-  const visited = new Uint8Array(width * height);
-  let head = 0;
-  let tail = 0;
-
-  function enqueue(x: number, y: number) {
-    const offset = y * width + x;
-
-    if (visited[offset]) {
-      return;
-    }
-
-    visited[offset] = 1;
-    queue[tail] = offset;
-    tail += 1;
-  }
-
-  for (let x = 0; x < width; x += 1) {
-    enqueue(x, 0);
-    enqueue(x, height - 1);
-  }
-
-  for (let y = 1; y < height - 1; y += 1) {
-    enqueue(0, y);
-    enqueue(width - 1, y);
-  }
-
-  while (head < tail) {
-    const offset = queue[head];
-    head += 1;
-
-    const x = offset % width;
-    const y = Math.floor(offset / width);
-    const pixelIndex = offset * 4;
-
-    if (colorDistance(data, pixelIndex, reference) > threshold) {
-      continue;
-    }
-
-    data[pixelIndex + 3] = 0;
-
-    if (x > 0) {
-      enqueue(x - 1, y);
-    }
-    if (x < width - 1) {
-      enqueue(x + 1, y);
-    }
-    if (y > 0) {
-      enqueue(x, y - 1);
-    }
-    if (y < height - 1) {
-      enqueue(x, y + 1);
-    }
-  }
-
-  context.putImageData(imageData, 0, 0);
-  const blob = await canvasToBlob(canvas, "image/png", 1);
-
-  return {
-    blob,
-    width,
-    height,
-    mimeType: "image/png",
-  };
-}
-
-async function removeBackgroundWithImgly(
-  version: ImageVersion,
-  settings: RemoveBackgroundSettings,
-): Promise<Pick<ImageVersion, "blob" | "width" | "height" | "mimeType">> {
-  const { removeBackground } = await import("@imgly/background-removal");
-  const blob = await removeBackground(version.blob, {
-    device: "cpu",
-    model: settings.model,
-    output: {
-      format: "image/png",
-      quality: 1,
-    },
+    worker.postMessage(request);
   });
-  const image = await loadImageFromBlob(blob);
-
-  return {
-    blob,
-    width: image.naturalWidth,
-    height: image.naturalHeight,
-    mimeType: "image/png",
-  };
 }
 
 export async function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {

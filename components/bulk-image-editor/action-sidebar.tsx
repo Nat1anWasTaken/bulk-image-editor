@@ -278,7 +278,7 @@ export function BulkImageEditorActionSidebar({
                 each image&apos;s currently active version as input.
               </CardDescription>
             </CardHeader>
-            <CardContent className="mt-4 grid gap-3 p-4">
+            <CardContent className="flex flex-col gap-3 p-4 pt-4">
               {progress ? (
                 <div className="rounded-[1.2rem] border border-border/30 bg-background/10 p-3">
                   <div className="flex items-center justify-between gap-3 text-sm text-background">
