@@ -20,74 +20,67 @@ type DropZoneHalfProps = {
   title: string;
   subtitle: string;
   disabled?: boolean;
+  active?: boolean;
+  dimmed?: boolean;
   onDrop: (files: File[]) => void;
 };
 
-function DropZoneHalf({ icon: Icon, title, subtitle, disabled, onDrop }: DropZoneHalfProps) {
-  const [active, setActive] = useState(false);
-
-  function handleDragEnter(e: React.DragEvent) {
-    e.preventDefault();
-    if (!disabled) setActive(true);
-  }
-
-  function handleDragLeave(e: React.DragEvent) {
-    e.preventDefault();
-    setActive(false);
-  }
-
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-  }
-
+function DropZoneHalf({
+  icon: Icon,
+  title,
+  subtitle,
+  disabled,
+  active,
+  dimmed,
+  onDrop,
+}: DropZoneHalfProps) {
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
-    setActive(false);
     const files = extractImageFiles(e.dataTransfer);
     if (files.length && !disabled) onDrop(files);
   }
 
   return (
     <div
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
+      onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
       className={cn(
-        "relative flex flex-1 flex-col items-center justify-center gap-4 rounded-3xl m-4 p-6",
+        "relative flex flex-1 flex-col items-center justify-center gap-5 rounded-3xl m-4 p-8",
         "border-2 border-dashed transition-all duration-200",
         disabled && "cursor-not-allowed border-muted-foreground/10 bg-muted/5 opacity-30",
-        !disabled && !active && "border-muted-foreground/20 bg-muted/5",
-        !disabled && active && "border-primary/60 bg-primary/5",
+        !disabled && active && "scale-[1.02] border-primary bg-primary/10 shadow-lg shadow-primary/10",
+        !disabled && dimmed && "scale-[0.98] border-muted-foreground/10 bg-muted/3 opacity-40",
+        !disabled && !active && !dimmed && "border-muted-foreground/20 bg-muted/5",
       )}
     >
-      {!disabled && (
-        <div
-          className={cn(
-            "absolute inset-0 rounded-3xl bg-primary/8 transition-opacity duration-200",
-            active ? "opacity-100" : "opacity-0",
-          )}
-        />
-      )}
       <div
         className={cn(
-          "relative flex h-16 w-16 items-center justify-center rounded-2xl transition-colors duration-200",
-          active ? "bg-primary/20" : "bg-primary/10",
+          "flex h-16 w-16 items-center justify-center rounded-2xl transition-colors duration-200",
+          disabled && "bg-muted",
+          !disabled && active && "bg-primary/20",
+          !disabled && !active && "bg-primary/10",
         )}
       >
-        <Icon className="h-8 w-8 text-primary" />
+        <Icon
+          className={cn(
+            "h-8 w-8 transition-colors duration-200",
+            disabled && "text-muted-foreground",
+            !disabled && active && "text-primary",
+            !disabled && !active && "text-primary/70",
+          )}
+        />
       </div>
-      <div className="relative text-center">
+      <div className="text-center">
         <p
           className={cn(
             "text-lg font-semibold transition-colors duration-200",
-            active && "text-primary",
+            active && !disabled && "text-primary",
           )}
         >
           {title}
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+        <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p>
       </div>
     </div>
   );
@@ -98,8 +91,19 @@ export function BulkImageEditorDropZone({
   onDropAsVersion,
   onDropAsNewImage,
 }: DropZoneProps) {
+  const [activeZone, setActiveZone] = useState<"version" | "collection" | null>(null);
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    const zone = e.clientX < window.innerWidth / 2 ? "version" : "collection";
+    setActiveZone((prev) => (prev !== zone ? zone : prev));
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex bg-black/50 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex bg-black/50 backdrop-blur-sm"
+      onDragOver={handleDragOver}
+    >
       <DropZoneHalf
         icon={Layers3}
         title="Add as version"
@@ -109,13 +113,16 @@ export function BulkImageEditorDropZone({
             : "Select an image first"
         }
         disabled={!currentImage}
+        active={activeZone === "version"}
+        dimmed={activeZone === "collection"}
         onDrop={onDropAsVersion}
       />
-      <div className="pointer-events-none w-px self-stretch my-10 bg-border/30" />
       <DropZoneHalf
         icon={ImagePlus}
         title="Add as new image"
         subtitle="Drop to expand your collection"
+        active={activeZone === "collection"}
+        dimmed={activeZone === "version"}
         onDrop={onDropAsNewImage}
       />
     </div>
