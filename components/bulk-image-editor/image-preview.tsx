@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import Image from "next/image";
-import { Download } from "lucide-react";
+import { Download, Share2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ type BulkImageEditorImagePreviewProps = {
     handle: CropHandle,
   ) => void;
   onDownloadSingle: () => void;
+  onShareSingle: () => void;
 };
 
 const cropHandles: Array<[Exclude<CropHandle, "move">, string]> = [
@@ -48,6 +49,7 @@ export function BulkImageEditorImagePreview({
   onCropInteractionMove,
   onCropInteractionStart,
   onDownloadSingle,
+  onShareSingle,
 }: BulkImageEditorImagePreviewProps) {
   return (
     <section className="flex min-h-0 flex-col overflow-hidden bg-muted/40">
@@ -63,15 +65,27 @@ export function BulkImageEditorImagePreview({
           </p>
         </div>
         {version ? (
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={onDownloadSingle}
-            title={`Download as ${downloadFormat.toUpperCase()}`}
-          >
-            <Download className="size-3.5" />
-            {downloadFormat.toUpperCase()}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="xs"
+              className="flex-1"
+              onClick={onDownloadSingle}
+              title={`Download as ${downloadFormat.toUpperCase()}`}
+            >
+              <Download className="size-3.5" />
+              {downloadFormat.toUpperCase()}
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
+              className="flex-1"
+              onClick={onShareSingle}
+              title="Share image"
+            >
+              <Share2 className="size-3.5" />
+            </Button>
+          </div>
         ) : null}
       </div>
 

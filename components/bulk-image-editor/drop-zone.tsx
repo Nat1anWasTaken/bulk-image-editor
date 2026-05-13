@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { ImagePlus, Layers3 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { EditorImage } from "@/components/bulk-image-editor/types";
 
 type DropZoneProps = {
@@ -22,6 +24,18 @@ type DropZoneHalfProps = {
 };
 
 function DropZoneHalf({ icon: Icon, title, subtitle, disabled, onDrop }: DropZoneHalfProps) {
+  const [active, setActive] = useState(false);
+
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    if (!disabled) setActive(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    setActive(false);
+  }
+
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault();
   }
@@ -29,30 +43,48 @@ function DropZoneHalf({ icon: Icon, title, subtitle, disabled, onDrop }: DropZon
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
+    setActive(false);
     const files = extractImageFiles(e.dataTransfer);
     if (files.length && !disabled) onDrop(files);
   }
 
   return (
     <div
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className={[
-        "group relative flex flex-1 flex-col items-center justify-center gap-4 rounded-3xl m-4 p-6",
+      className={cn(
+        "relative flex flex-1 flex-col items-center justify-center gap-4 rounded-3xl m-4 p-6",
         "border-2 border-dashed transition-all duration-200",
-        disabled
-          ? "cursor-not-allowed border-muted-foreground/10 bg-muted/5 opacity-30"
-          : "border-muted-foreground/20 bg-muted/5 group-hover:border-primary/50 group-hover:bg-primary/5",
-      ].join(" ")}
+        disabled && "cursor-not-allowed border-muted-foreground/10 bg-muted/5 opacity-30",
+        !disabled && !active && "border-muted-foreground/20 bg-muted/5",
+        !disabled && active && "border-primary/60 bg-primary/5",
+      )}
     >
       {!disabled && (
-        <div className="absolute inset-0 rounded-3xl bg-primary/8 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+        <div
+          className={cn(
+            "absolute inset-0 rounded-3xl bg-primary/8 transition-opacity duration-200",
+            active ? "opacity-100" : "opacity-0",
+          )}
+        />
       )}
-      <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 transition-colors duration-200 group-hover:bg-primary/20">
+      <div
+        className={cn(
+          "relative flex h-16 w-16 items-center justify-center rounded-2xl transition-colors duration-200",
+          active ? "bg-primary/20" : "bg-primary/10",
+        )}
+      >
         <Icon className="h-8 w-8 text-primary" />
       </div>
       <div className="relative text-center">
-        <p className="text-lg font-semibold transition-colors duration-200 group-hover:text-primary">
+        <p
+          className={cn(
+            "text-lg font-semibold transition-colors duration-200",
+            active && "text-primary",
+          )}
+        >
           {title}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
@@ -67,7 +99,7 @@ export function BulkImageEditorDropZone({
   onDropAsNewImage,
 }: DropZoneProps) {
   return (
-    <div className="group/container fixed inset-0 z-50 flex bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex bg-black/50 backdrop-blur-sm">
       <DropZoneHalf
         icon={Layers3}
         title="Add as version"

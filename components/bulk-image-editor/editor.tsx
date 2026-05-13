@@ -620,6 +620,25 @@ export function BulkImageEditor() {
     })();
   }
 
+  function shareSingle() {
+    if (!activeVersion || !selectedImage) return;
+    if (!navigator.share) return;
+
+    void (async () => {
+      try {
+        const blob = await encodeVersionForDownload(activeVersion, downloadFormat);
+        const ext = downloadFormat === "jpg" ? "jpg" : "png";
+        const mimeType = ext === "jpg" ? "image/jpeg" : "image/png";
+        const file = new File([blob], `${selectedImage.fileNameStem}-${activeVersion.label}.${ext}`, { type: mimeType });
+        await navigator.share({ files: [file] });
+      } catch (error) {
+        if (error instanceof Error && error.name !== "AbortError") {
+          setErrorMessage(error.message || "Failed to share image.");
+        }
+      }
+    })();
+  }
+
   return (
     <main className="h-screen overflow-hidden bg-background text-foreground">
       <div className="mx-auto flex h-screen w-full max-w-[1600px] flex-col px-4 py-4 sm:px-6 lg:px-8">
@@ -657,6 +676,7 @@ export function BulkImageEditor() {
                 onCropInteractionMove={handleCropPointerMove}
                 onCropInteractionStart={beginCropInteraction}
                 onDownloadSingle={downloadSingle}
+                onShareSingle={shareSingle}
               />
               <BulkImageEditorActionSidebar
                 actionSettings={actionSettings}
