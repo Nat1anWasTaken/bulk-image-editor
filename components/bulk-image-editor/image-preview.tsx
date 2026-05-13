@@ -3,6 +3,7 @@ import Image from "next/image";
 import { Download } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { formatDimensions } from "@/components/bulk-image-editor/editor-helpers";
 import type {
   CropSettings,
@@ -62,15 +63,15 @@ export function BulkImageEditorImagePreview({
           </p>
         </div>
         {version ? (
-          <button
-            type="button"
-            className="ml-4 inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent"
+          <Button
+            variant="outline"
+            size="xs"
             onClick={onDownloadSingle}
             title={`Download as ${downloadFormat.toUpperCase()}`}
           >
             <Download className="size-3.5" />
             {downloadFormat.toUpperCase()}
-          </button>
+          </Button>
         ) : null}
       </div>
 
