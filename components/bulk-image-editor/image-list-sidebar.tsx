@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Check, Pencil, Trash2 } from "lucide-react";
+import { Check, Trash2, Upload } from "lucide-react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ type BulkImageEditorImageListSidebarProps = {
   onSelectImage: (imageId: string) => void;
   onSelectVersion: (imageId: string, versionId: string) => void;
   onDeleteImage: (imageId: string) => void;
-  onReplaceImage: (imageId: string) => void;
+  onUploadVersion: (imageId: string) => void;
 };
 
 export function BulkImageEditorImageListSidebar({
@@ -26,7 +26,7 @@ export function BulkImageEditorImageListSidebar({
   onSelectImage,
   onSelectVersion,
   onDeleteImage,
-  onReplaceImage,
+  onUploadVersion,
 }: BulkImageEditorImageListSidebarProps) {
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -102,10 +102,10 @@ export function BulkImageEditorImageListSidebar({
                       className="size-7 rounded-full bg-background/80 text-muted-foreground shadow-sm hover:bg-background hover:text-foreground"
                       onClick={(event) => {
                         event.stopPropagation();
-                        onReplaceImage(image.id);
+                        onUploadVersion(image.id);
                       }}
                     >
-                      <Pencil className="size-3.5" />
+                      <Upload className="size-3.5" />
                     </Button>
                     <Button
                       variant="ghost"

@@ -36,7 +36,7 @@ const backgroundRemovalResolvers = new Map<
   }
 >();
 
-function createId(prefix: string) {
+export function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
@@ -214,6 +214,25 @@ export async function canvasToBlob(canvas: HTMLCanvasElement, type: string, qual
   }
 
   return blob;
+}
+
+export async function fileToImageVersion(file: File): Promise<ImageVersion> {
+  const blob = file.slice(0, file.size, file.type || "image/png");
+  const image = await loadImageFromBlob(blob);
+  const objectUrl = URL.createObjectURL(blob);
+
+  return {
+    id: createId("version"),
+    label: sanitizeFileNameStem(file.name),
+    actionId: "original",
+    sourceVersionId: null,
+    blob,
+    objectUrl,
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+    mimeType: blob.type || "image/png",
+    createdAt: Date.now(),
+  };
 }
 
 export function createDerivedVersion(

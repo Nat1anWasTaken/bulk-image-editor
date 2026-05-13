@@ -15,9 +15,10 @@ import {
   applyActionToImages,
   exportImagesArchive,
 } from "@/components/bulk-image-editor/editor-operations";
+import { BulkImageEditorDropZone } from "@/components/bulk-image-editor/drop-zone";
 import { BulkImageEditorImageListSidebar } from "@/components/bulk-image-editor/image-list-sidebar";
 import { BulkImageEditorImagePreview } from "@/components/bulk-image-editor/image-preview";
-import { encodeVersionForDownload, fileToEditorImage, getActiveVersion } from "@/components/bulk-image-editor/image-utils";
+import { createId, encodeVersionForDownload, fileToEditorImage, fileToImageVersion, getActiveVersion, loadImageFromBlob } from "@/components/bulk-image-editor/image-utils";
 import { getCompatibleRemoveBackgroundModel } from "@/components/bulk-image-editor/remove-background-options";
 import { BulkImageEditorWorkspaceHeader } from "@/components/bulk-image-editor/workspace-header";
 import type {
@@ -27,6 +28,7 @@ import type {
   EditorActionSettings,
   EditorImage,
   ExportFormat,
+  ImageVersion,
   ProcessingProgress,
   RemoveBackgroundSettings,
 } from "@/components/bulk-image-editor/types";
@@ -67,9 +69,11 @@ export function BulkImageEditor() {
   const [applyProgress, setApplyProgress] = useState<ActionProgress | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const objectUrlsRef = useRef<string[]>([]);
   const previewFrameRef = useRef<HTMLDivElement | null>(null);
   const cropInteractionRef = useRef<CropInteraction | null>(null);
+  const dragCounterRef = useRef(0);
 
   const selectedImage = selectedImageId
     ? images.find((image) => image.id === selectedImageId) ?? null
@@ -146,6 +150,84 @@ export function BulkImageEditor() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [images, selectedImageIndex]);
+
+  useEffect(() => {
+    if (!images.length) return;
+
+    function onDragEnter(e: DragEvent) {
+      e.preventDefault();
+      if (e.dataTransfer?.types.includes("Files")) {
+        dragCounterRef.current++;
+        if (dragCounterRef.current === 1) setIsDragOver(true);
+      }
+    }
+
+    function onDragLeave() {
+      if (dragCounterRef.current > 0) {
+        dragCounterRef.current--;
+        if (dragCounterRef.current === 0) setIsDragOver(false);
+      }
+    }
+
+    function onDragOver(e: DragEvent) {
+      e.preventDefault();
+    }
+
+    function onDrop(e: DragEvent) {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
+
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+      dragCounterRef.current = 0;
+    };
+  }, [images.length]);
+
+  function resetDragState() {
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+  }
+
+  async function handleDropAsVersion(files: File[]) {
+    resetDragState();
+    if (!selectedImageId || !files.length) return;
+    setErrorMessage(null);
+    try {
+      const newVersions = await Promise.all(files.map(fileToImageVersion));
+      setImages((prev) =>
+        prev.map((img) =>
+          img.id === selectedImageId
+            ? { ...img, versions: [...img.versions, ...newVersions], activeVersionId: newVersions.at(-1)!.id }
+            : img,
+        ),
+      );
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to add version.");
+    }
+  }
+
+  async function handleDropAsNewImage(files: File[]) {
+    resetDragState();
+    if (!files.length) return;
+    setErrorMessage(null);
+    try {
+      const newImages = await Promise.all(files.map(fileToEditorImage));
+      setImages((prev) => [...prev, ...newImages]);
+      setSelectedImageId(newImages[0]?.id ?? null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to add images.");
+    }
+  }
 
   async function handleFilesSelected(fileList: FileList | null) {
     if (!fileList?.length) {
@@ -394,7 +476,7 @@ export function BulkImageEditor() {
     }
   }
 
-  function replaceImage(imageId: string) {
+  function uploadVersion(imageId: string) {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
@@ -403,19 +485,30 @@ export function BulkImageEditor() {
       if (!file) return;
 
       try {
-        const newImage = await fileToEditorImage(file);
+        const blob = file.slice(0, file.size, file.type || "image/png");
+        const img = await loadImageFromBlob(blob);
+        const versionId = createId("version");
+        const newVersion: ImageVersion = {
+          id: versionId,
+          label: "Uploaded",
+          actionId: "original" as const,
+          sourceVersionId: null,
+          blob,
+          objectUrl: URL.createObjectURL(blob),
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          mimeType: blob.type || "image/png",
+          createdAt: Date.now(),
+        };
         setImages((current) =>
-          current.map((img) => {
-            if (img.id !== imageId) return img;
-            for (const version of img.versions) {
-              URL.revokeObjectURL(version.objectUrl);
-            }
-            return newImage;
-          }),
+          current.map((i) =>
+            i.id === imageId
+              ? { ...i, activeVersionId: versionId, versions: [...i.versions, newVersion] }
+              : i
+          )
         );
-        setSelectedImageId(newImage.id);
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Failed to load replacement image.");
+        setErrorMessage(error instanceof Error ? error.message : "Failed to load image.");
       }
     };
     input.click();
@@ -499,7 +592,7 @@ export function BulkImageEditor() {
                 onSelectImage={setSelectedImageId}
                 onSelectVersion={setActiveVersion}
                 onDeleteImage={deleteImage}
-                onReplaceImage={replaceImage}
+                onUploadVersion={uploadVersion}
               />
               <BulkImageEditorImagePreview
                 crop={actionSettings.crop}
@@ -535,6 +628,13 @@ export function BulkImageEditor() {
           </section>
         )}
       </div>
+      {isDragOver && images.length > 0 && (
+        <BulkImageEditorDropZone
+          currentImage={selectedImage}
+          onDropAsVersion={handleDropAsVersion}
+          onDropAsNewImage={handleDropAsNewImage}
+        />
+      )}
     </main>
   );
 }
