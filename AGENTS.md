@@ -44,5 +44,6 @@ Single-page browser app with **no backend**. All editing and export happens clie
 
 - All editor components use `"use client"` — this is a client-side app with no server components beyond the layout shell.
 - shadcn/ui components live in `components/ui/` and use the `radix-maia` style. Add new ones via `pnpm dlx shadcn add <name>`.
+- **Always prefer shadcn/ui components over raw HTML elements.** Use `Button` instead of `<button>`, `Input` instead of `<input>`, `Select` instead of `<select>`, etc. Check `components/ui/` for available primitives before writing any UI element. If a needed component is missing, install it with `pnpm dlx shadcn add <name>` before falling back to raw HTML.
 - Tailwind CSS 4: uses `@tailwindcss/postcss` (no `tailwind.config` file). Utility classes work as usual but config is CSS-first.
 - ESLint flat config (`eslint.config.mjs`) with `eslint-config-next` core-web-vitals and typescript presets.

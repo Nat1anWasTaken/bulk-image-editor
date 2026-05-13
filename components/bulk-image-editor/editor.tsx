@@ -376,6 +376,51 @@ export function BulkImageEditor() {
     setDownloadProgress(null);
   }
 
+  function deleteImage(imageId: string) {
+    const image = images.find((img) => img.id === imageId);
+    if (!image) return;
+
+    for (const version of image.versions) {
+      URL.revokeObjectURL(version.objectUrl);
+    }
+
+    const nextImages = images.filter((img) => img.id !== imageId);
+    setImages(nextImages);
+
+    if (selectedImageId === imageId) {
+      const deletedIndex = images.findIndex((img) => img.id === imageId);
+      const nextIndex = deletedIndex < nextImages.length ? deletedIndex : nextImages.length - 1;
+      setSelectedImageId(nextImages[nextIndex]?.id ?? null);
+    }
+  }
+
+  function replaceImage(imageId: string) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      try {
+        const newImage = await fileToEditorImage(file);
+        setImages((current) =>
+          current.map((img) => {
+            if (img.id !== imageId) return img;
+            for (const version of img.versions) {
+              URL.revokeObjectURL(version.objectUrl);
+            }
+            return newImage;
+          }),
+        );
+        setSelectedImageId(newImage.id);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Failed to load replacement image.");
+      }
+    };
+    input.click();
+  }
+
   function downloadAll() {
     if (!images.length || isBusy) {
       return;
@@ -453,6 +498,8 @@ export function BulkImageEditor() {
                 selectedImageId={selectedImageId}
                 onSelectImage={setSelectedImageId}
                 onSelectVersion={setActiveVersion}
+                onDeleteImage={deleteImage}
+                onReplaceImage={replaceImage}
               />
               <BulkImageEditorImagePreview
                 crop={actionSettings.crop}
