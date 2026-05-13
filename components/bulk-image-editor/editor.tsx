@@ -152,6 +152,58 @@ export function BulkImageEditor() {
   }, [images, selectedImageIndex]);
 
   useEffect(() => {
+    if (!selectedImageId) return;
+
+    async function onPaste(event: ClipboardEvent) {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+
+      let imageItem: DataTransferItem | null = null;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          imageItem = item;
+          break;
+        }
+      }
+      if (!imageItem) return;
+
+      event.preventDefault();
+
+      const blob = imageItem.getAsFile();
+      if (!blob) return;
+
+      try {
+        const img = await loadImageFromBlob(blob);
+        const versionId = createId("version");
+        const newVersion: ImageVersion = {
+          id: versionId,
+          label: "Pasted",
+          actionId: "original",
+          sourceVersionId: null,
+          blob,
+          objectUrl: URL.createObjectURL(blob),
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          mimeType: blob.type || "image/png",
+          createdAt: Date.now(),
+        };
+        setImages((current) =>
+          current.map((i) =>
+            i.id === selectedImageId
+              ? { ...i, activeVersionId: versionId, versions: [...i.versions, newVersion] }
+              : i
+          )
+        );
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Failed to load pasted image.");
+      }
+    }
+
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [selectedImageId]);
+
+  useEffect(() => {
     if (!images.length) return;
 
     function onDragEnter(e: DragEvent) {
