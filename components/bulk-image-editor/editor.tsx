@@ -17,7 +17,7 @@ import {
 } from "@/components/bulk-image-editor/editor-operations";
 import { BulkImageEditorImageListSidebar } from "@/components/bulk-image-editor/image-list-sidebar";
 import { BulkImageEditorImagePreview } from "@/components/bulk-image-editor/image-preview";
-import { fileToEditorImage, getActiveVersion } from "@/components/bulk-image-editor/image-utils";
+import { encodeVersionForDownload, fileToEditorImage, getActiveVersion } from "@/components/bulk-image-editor/image-utils";
 import { getCompatibleRemoveBackgroundModel } from "@/components/bulk-image-editor/remove-background-options";
 import { BulkImageEditorWorkspaceHeader } from "@/components/bulk-image-editor/workspace-header";
 import type {
@@ -409,6 +409,27 @@ export function BulkImageEditor() {
     })();
   }
 
+  function downloadSingle() {
+    if (!activeVersion || !selectedImage) return;
+
+    void (async () => {
+      try {
+        const blob = await encodeVersionForDownload(activeVersion, downloadFormat);
+        const ext = downloadFormat === "jpg" ? "jpg" : "png";
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = `${selectedImage.fileNameStem}-${activeVersion.label}.${ext}`;
+        link.click();
+        URL.revokeObjectURL(downloadUrl);
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error ? error.message : "Failed to download image.",
+        );
+      }
+    })();
+  }
+
   return (
     <main className="h-screen overflow-hidden bg-background text-foreground">
       <div className="mx-auto flex h-screen w-full max-w-[1600px] flex-col px-4 py-4 sm:px-6 lg:px-8">
@@ -435,6 +456,7 @@ export function BulkImageEditor() {
               />
               <BulkImageEditorImagePreview
                 crop={actionSettings.crop}
+                downloadFormat={downloadFormat}
                 previewFrameRef={previewFrameRef}
                 selectedActionId={selectedActionId}
                 selectedImageName={selectedImage?.name ?? null}
@@ -442,6 +464,7 @@ export function BulkImageEditor() {
                 onCropInteractionEnd={endCropInteraction}
                 onCropInteractionMove={handleCropPointerMove}
                 onCropInteractionStart={beginCropInteraction}
+                onDownloadSingle={downloadSingle}
               />
               <BulkImageEditorActionSidebar
                 actionSettings={actionSettings}

@@ -1,11 +1,13 @@
 import type { RefObject } from "react";
 import Image from "next/image";
+import { Download } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatDimensions } from "@/components/bulk-image-editor/editor-helpers";
 import type {
   CropSettings,
   EditorActionId,
+  ExportFormat,
   ImageVersion,
 } from "@/components/bulk-image-editor/types";
 
@@ -13,6 +15,7 @@ type CropHandle = "move" | "nw" | "ne" | "se" | "sw";
 
 type BulkImageEditorImagePreviewProps = {
   crop: CropSettings;
+  downloadFormat: ExportFormat;
   previewFrameRef: RefObject<HTMLDivElement | null>;
   selectedActionId: EditorActionId;
   selectedImageName: string | null;
@@ -23,6 +26,7 @@ type BulkImageEditorImagePreviewProps = {
     event: React.PointerEvent<HTMLElement>,
     handle: CropHandle,
   ) => void;
+  onDownloadSingle: () => void;
 };
 
 const cropHandles: Array<[Exclude<CropHandle, "move">, string]> = [
@@ -34,6 +38,7 @@ const cropHandles: Array<[Exclude<CropHandle, "move">, string]> = [
 
 export function BulkImageEditorImagePreview({
   crop,
+  downloadFormat,
   previewFrameRef,
   selectedActionId,
   selectedImageName,
@@ -41,6 +46,7 @@ export function BulkImageEditorImagePreview({
   onCropInteractionEnd,
   onCropInteractionMove,
   onCropInteractionStart,
+  onDownloadSingle,
 }: BulkImageEditorImagePreviewProps) {
   return (
     <section className="flex min-h-0 flex-col overflow-hidden bg-muted/40">
@@ -55,6 +61,17 @@ export function BulkImageEditorImagePreview({
               : "Choose an image from the left."}
           </p>
         </div>
+        {version ? (
+          <button
+            type="button"
+            className="ml-4 inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent"
+            onClick={onDownloadSingle}
+            title={`Download as ${downloadFormat.toUpperCase()}`}
+          >
+            <Download className="size-3.5" />
+            {downloadFormat.toUpperCase()}
+          </button>
+        ) : null}
       </div>
 
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-5 lg:p-8">
